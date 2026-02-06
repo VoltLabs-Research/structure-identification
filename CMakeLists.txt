@@ -47,6 +47,7 @@ set_target_properties(${PROJECT_NAME} PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_include_directories(${PROJECT_NAME} PUBLIC
 	${CMAKE_SOURCE_DIR}/include
 )
+target_precompile_headers(${PROJECT_NAME} PRIVATE <volt/core/volt.h>)
 
 target_compile_definitions(${PROJECT_NAME} PUBLIC
 )

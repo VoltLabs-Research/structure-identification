@@ -10,9 +10,9 @@ class StructureIdentificationConan(ConanFile):
     settings = "os", "arch", "compiler", "build_type"
     requires = (
         "coretoolkit/1.0.0",
-        "spdlog/1.14.1",  # Logging, explicit for consistent ABI
-        "fmt/10.2.1",  # Formatting, explicit for consistent ABI
-        "nlohmann_json/3.11.3",  # Header-only, needs explicit require for includes
+        "spdlog/1.14.1",
+        "fmt/10.2.1",
+        "nlohmann_json/3.11.3",
     )
     exports_sources = "CMakeLists.txt", "include/*", "src/*"
 

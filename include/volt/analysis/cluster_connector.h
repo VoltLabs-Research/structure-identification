@@ -1,10 +1,10 @@
-#include <opendxa/analysis/analysis_context.h>
-#include <opendxa/analysis/structure_analysis.h>
+#include <volt/analysis/analysis_context.h>
+#include <volt/analysis/structure_analysis.h>
 #include <tbb/spin_mutex.h>
 #include <vector>
 #include <memory>
 
-namespace OpenDXA{
+namespace Volt{
 
 class ClusterConnector{
 public:

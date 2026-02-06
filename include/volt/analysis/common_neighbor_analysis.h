@@ -1,10 +1,10 @@
 #pragma once
 
-#include <opendxa/core/opendxa.h>
-#include <opendxa/structures/neighbor_bond_array.h>
-#include <opendxa/structures/coordination_structure.h>
+#include <volt/core/volt.h>
+#include <volt/structures/neighbor_bond_array.h>
+#include <volt/structures/coordination_structure.h>
 
-namespace OpenDXA{
+namespace Volt{
 
 class CommonNeighborAnalysis{
 public:

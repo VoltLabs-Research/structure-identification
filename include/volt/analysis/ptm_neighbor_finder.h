@@ -1,11 +1,11 @@
 #pragma once
 
-#include <opendxa/analysis/nearest_neighbor_finder.h>
-#include <opendxa/analysis/polyhedral_template_matching.h>
-#include <opendxa/analysis/analysis_context.h>
+#include <volt/analysis/nearest_neighbor_finder.h>
+#include <volt/analysis/polyhedral_template_matching.h>
+#include <volt/analysis/analysis_context.h>
 #include <boost/container/small_vector.hpp>
 
-namespace OpenDXA{
+namespace Volt{
 
 // Finds the neighbors of a particle whose local crystalline order has been
 // determined with the Polyhedral Template Matching Algorithm. 

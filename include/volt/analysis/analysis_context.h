@@ -1,9 +1,9 @@
 #pragma once
-#include <opendxa/core/particle_property.h>
-#include <opendxa/core/simulation_cell.h>
-#include <opendxa/structures/lattice_structure.h>
+#include <volt/core/particle_property.h>
+#include <volt/core/simulation_cell.h>
+#include <volt/structures/lattice_structure.h>
 
-namespace OpenDXA{
+namespace Volt{
 
 class AnalysisContext{
 public:

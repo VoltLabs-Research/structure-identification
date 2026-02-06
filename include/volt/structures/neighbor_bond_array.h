@@ -2,9 +2,9 @@
 
 #include <cstring>
 #include <cassert>
-#include <opendxa/structures/crystal_structure_types.h>
+#include <volt/structures/crystal_structure_types.h>
 
-namespace OpenDXA{
+namespace Volt{
 
 struct NeighborBondArray{
     unsigned int neighborArray[32];

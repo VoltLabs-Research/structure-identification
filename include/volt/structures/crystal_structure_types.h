@@ -1,6 +1,6 @@
 #pragma once
 
-namespace OpenDXA{
+namespace Volt{
 
 // Broad categories for crystal structures detected on an atom.
 // Used to classify each atom's local arrangement into a known lattice

@@ -1,12 +1,12 @@
-#include <opendxa/analysis/polyhedral_template_matching.h>
-#include <opendxa/math/affine_transformation.h>
+#include <volt/analysis/polyhedral_template_matching.h>
+#include <volt/math/affine_transformation.h>
 
 #include <cassert>
 #include <cstring> 
 #include <cmath> 
 #include <stdexcept>
 
-namespace OpenDXA{
+namespace Volt{
 
 // Converts a raw integer code from the PTM library into our high-level enum.
 // This bridges the C API (which returns PTM_MATCH_*) to our StructureType values.

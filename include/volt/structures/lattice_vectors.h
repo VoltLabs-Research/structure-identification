@@ -1,8 +1,8 @@
 #pragma once
 
-#include <opendxa/math/lin_alg.h>
+#include <volt/math/lin_alg.h>
 
-namespace OpenDXA{
+namespace Volt{
 
 // Twelve face-centered cubic neighbor directions, pointing from
 // one atom toward the centers of its 12 nearest-neighbor atoms.

@@ -1,8 +1,8 @@
-#include <opendxa/core/opendxa.h>
-#include <opendxa/utilities/concurrence/parallel_system.h>
-#include <opendxa/analysis/structure_analysis.h>
-#include <opendxa/analysis/polyhedral_template_matching.h>
-#include <opendxa/analysis/ptm_neighbor_finder.h>
+#include <volt/core/volt.h>
+#include <volt/utilities/concurrence/parallel_system.h>
+#include <volt/analysis/structure_analysis.h>
+#include <volt/analysis/polyhedral_template_matching.h>
+#include <volt/analysis/ptm_neighbor_finder.h>
 #include <ptm_constants.h>
 #include <tbb/parallel_for.h>
 #include <tbb/blocked_range.h>
@@ -11,7 +11,7 @@
 #include <ranges>
 #include <numeric>
 
-namespace OpenDXA {
+namespace Volt {
 
 StructureAnalysis::StructureAnalysis(
     AnalysisContext& context,
@@ -106,7 +106,7 @@ json StructureAnalysis::getAtomsData(
     return json(groupedAtoms);
 }
 
-bool StructureAnalysis::setupPTM(OpenDXA::PTM& ptm, size_t N){
+bool StructureAnalysis::setupPTM(Volt::PTM& ptm, size_t N){
     ptm.setCalculateDefGradient(true);
     ptm.setRmsdCutoff(std::numeric_limits<double>::infinity());
     
@@ -219,7 +219,7 @@ void StructureAnalysis::determineLocalStructuresWithPTM() {
     const size_t N = _context.atomCount();
     if(!N) return;
 
-    OpenDXA::PTM ptm;
+    Volt::PTM ptm;
     if(!setupPTM(ptm, N)){
         throw std::runtime_error("Error trying to initialize PTM.");
     }

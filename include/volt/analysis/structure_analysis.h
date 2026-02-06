@@ -1,24 +1,24 @@
 #pragma once
 
-#include <opendxa/core/opendxa.h>
-#include <opendxa/core/particle_property.h>
-#include <opendxa/core/simulation_cell.h>
-#include <opendxa/structures/cluster_graph.h>
-#include <opendxa/structures/crystal_structure_types.h>
-#include <opendxa/structures/neighbor_bond_array.h>
-#include <opendxa/structures/coordination_structure.h>
-#include <opendxa/structures/lattice_structure.h>
-#include <opendxa/core/coordination_structures.h>
-#include <opendxa/analysis/polyhedral_template_matching.h>
-#include <opendxa/analysis/analysis_context.h>
-#include <opendxa/core/lammps_parser.h>
-#include <opendxa/analysis/ptm_neighbor_finder.h>
+#include <volt/core/volt.h>
+#include <volt/core/particle_property.h>
+#include <volt/core/simulation_cell.h>
+#include <volt/structures/cluster_graph.h>
+#include <volt/structures/crystal_structure_types.h>
+#include <volt/structures/neighbor_bond_array.h>
+#include <volt/structures/coordination_structure.h>
+#include <volt/structures/lattice_structure.h>
+#include <volt/core/coordination_structures.h>
+#include <volt/analysis/polyhedral_template_matching.h>
+#include <volt/analysis/analysis_context.h>
+#include <volt/core/lammps_parser.h>
+#include <volt/analysis/ptm_neighbor_finder.h>
 #include <nlohmann/json.hpp>
 #include <mutex>
 
 using json = nlohmann::json;
 
-namespace OpenDXA{
+namespace Volt{
 
 class StructureAnalysis{
 public:
@@ -271,7 +271,7 @@ private:
 		float cutoff
 	);
 
-	bool setupPTM(OpenDXA::PTM& ptm, size_t N);
+	bool setupPTM(Volt::PTM& ptm, size_t N);
 
 	mutable std::map<int, int> _structureStatistics;
     mutable bool _statisticsValid = false;

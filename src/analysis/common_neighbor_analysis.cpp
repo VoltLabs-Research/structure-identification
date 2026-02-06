@@ -1,6 +1,6 @@
-#include <opendxa/analysis/common_neighbor_analysis.h>
+#include <volt/analysis/common_neighbor_analysis.h>
 
-namespace OpenDXA{
+namespace Volt{
 
 // Count how many common neighbors a given neighbor has by using a bitmask
 // Each bit in neighborArray.neighborArray[neighborIndex] represents whether

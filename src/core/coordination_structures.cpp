@@ -1,7 +1,7 @@
-#include <opendxa/core/coordination_structures.h>
-#include <opendxa/analysis/analysis_context.h>
+#include <volt/core/coordination_structures.h>
+#include <volt/analysis/analysis_context.h>
 
-namespace OpenDXA{
+namespace Volt{
 
 // Contains the known coordination structures.
 CoordinationStructure CoordinationStructures::_coordinationStructures[NUM_COORD_TYPES];

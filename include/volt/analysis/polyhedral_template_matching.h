@@ -1,10 +1,10 @@
 #pragma once
 
-#include <opendxa/structures/crystal_structure_types.h>
-#include <opendxa/analysis/nearest_neighbor_finder.h> 
-#include <opendxa/core/simulation_cell.h>
-#include <opendxa/math/matrix3.h>
-#include <opendxa/math/quaternion.h>
+#include <volt/structures/crystal_structure_types.h>
+#include <volt/analysis/nearest_neighbor_finder.h> 
+#include <volt/core/simulation_cell.h>
+#include <volt/math/matrix3.h>
+#include <volt/math/quaternion.h>
 #include <ptm_functions.h>
 
 #include <vector>
@@ -17,7 +17,7 @@ extern "C" {
     typedef struct ptm_local_handle* ptm_local_handle_t;
 }
 
-namespace OpenDXA{
+namespace Volt{
 
 class PTM : public NearestNeighborFinder{
 public:

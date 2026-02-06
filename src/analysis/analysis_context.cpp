@@ -1,7 +1,7 @@
-#include <opendxa/analysis/analysis_context.h>
-#include <opendxa/structures/crystal_structure_types.h>
+#include <volt/analysis/analysis_context.h>
+#include <volt/structures/crystal_structure_types.h>
 
-namespace OpenDXA{
+namespace Volt{
 
 AnalysisContext::AnalysisContext(
     ParticleProperty* pos,

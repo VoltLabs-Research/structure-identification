@@ -1,11 +1,11 @@
 #pragma once
 
 #include <vector>
-#include <opendxa/math/lin_alg.h>
-#include <opendxa/structures/crystal_structure_types.h>
-#include <opendxa/structures/neighbor_bond_array.h>
+#include <volt/math/lin_alg.h>
+#include <volt/structures/crystal_structure_types.h>
+#include <volt/structures/neighbor_bond_array.h>
 
-namespace OpenDXA{
+namespace Volt{
 
 // A tiny, high perfomance integer sort for very small arrays of nonnegative values.
 // Given a range [begin, end) of integers each in [0, max), this routines builds

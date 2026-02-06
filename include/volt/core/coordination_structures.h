@@ -1,15 +1,15 @@
 #pragma once
 
-#include <opendxa/core/opendxa.h>
-#include <opendxa/structures/lattice_structure.h>
-#include <opendxa/structures/coordination_structure.h>
-#include <opendxa/analysis/nearest_neighbor_finder.h>
-#include <opendxa/core/particle_property.h>
-#include <opendxa/analysis/common_neighbor_analysis.h>
-#include <opendxa/structures/lattice_vectors.h>
-#include <opendxa/analysis/analysis_context.h>
+#include <volt/core/volt.h>
+#include <volt/structures/lattice_structure.h>
+#include <volt/structures/coordination_structure.h>
+#include <volt/analysis/nearest_neighbor_finder.h>
+#include <volt/core/particle_property.h>
+#include <volt/analysis/common_neighbor_analysis.h>
+#include <volt/structures/lattice_vectors.h>
+#include <volt/analysis/analysis_context.h>
 
-namespace OpenDXA{
+namespace Volt{
     
 class CoordinationStructures{
 public:

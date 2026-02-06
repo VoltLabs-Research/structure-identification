@@ -1,10 +1,10 @@
 #pragma once
 
-#include <opendxa/core/opendxa.h>
-#include <opendxa/structures/cluster.h>
-#include <opendxa/utilities/memory_pool.h>
+#include <volt/core/volt.h>
+#include <volt/structures/cluster.h>
+#include <volt/utilities/memory_pool.h>
 
-namespace OpenDXA{
+namespace Volt{
 
 class ClusterGraph{
 public:

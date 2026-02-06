@@ -1,6 +1,6 @@
-#include <opendxa/analysis/ptm_neighbor_finder.h>
+#include <volt/analysis/ptm_neighbor_finder.h>
 
-namespace OpenDXA{
+namespace Volt{
 
 inline StructureType readStructure(const Particles::ParticleProperty& property, size_t i){
     return static_cast<StructureType>(property.getInt(i));

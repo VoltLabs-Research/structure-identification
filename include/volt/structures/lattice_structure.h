@@ -2,11 +2,11 @@
 
 #include <vector>
 #include <array>
-#include <opendxa/math/lin_alg.h>
-#include <opendxa/structures/crystal_structure_types.h>
-#include <opendxa/structures/coordination_structure.h>
+#include <volt/math/lin_alg.h>
+#include <volt/structures/crystal_structure_types.h>
+#include <volt/structures/coordination_structure.h>
 
-namespace OpenDXA {
+namespace Volt {
 
 struct SymmetryPermutation{
     Matrix3 transformation;

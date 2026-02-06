@@ -1,8 +1,8 @@
-#include <opendxa/core/opendxa.h>
-#include <opendxa/structures/cluster_graph.h>
+#include <volt/core/volt.h>
+#include <volt/structures/cluster_graph.h>
 #include <tbb/spin_mutex.h>
 
-namespace OpenDXA{
+namespace Volt{
 
 // Manages a collection of clusters (group of atoms) and the transitions (misorientations)
 // between them. Transitions are connections that describe how one cluster's orientation

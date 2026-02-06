@@ -1,4 +1,4 @@
-#include <opendxa/analysis/cluster_connector.h>
+#include <volt/analysis/cluster_connector.h>
 #include <tbb/parallel_for.h>
 #include <tbb/blocked_range.h>
 #include <tbb/parallel_reduce.h>
@@ -8,7 +8,7 @@
 
 inline constexpr double CA_TRANSITION_MATRIX_EPSILON = 1e-6;
 
-namespace OpenDXA{
+namespace Volt{
 
 ClusterConnector::ClusterConnector(
     StructureAnalysis& sa,

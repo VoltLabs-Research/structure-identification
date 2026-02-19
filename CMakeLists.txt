@@ -37,7 +37,6 @@ find_package(coretoolkit REQUIRED)
 find_package(spdlog REQUIRED)
 find_package(fmt REQUIRED)
 find_package(nlohmann_json REQUIRED)
-find_package(OpenMP REQUIRED)
 
 file(GLOB_RECURSE LIBRARY_SOURCES CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/src/*.cpp)
 
@@ -57,7 +56,6 @@ target_link_libraries(${PROJECT_NAME} PUBLIC
 	spdlog::spdlog
 	fmt::fmt
 	nlohmann_json::nlohmann_json
-	OpenMP::OpenMP_CXX
 )
 
 install(TARGETS ${PROJECT_NAME} DESTINATION lib)

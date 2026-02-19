@@ -47,27 +47,33 @@ public:
 	void identifyStructuresCNA();
 	void computeMaximumNeighborDistanceFromPTM();
 	void determineLocalStructuresWithPTM();
+	void appendNeighbors(const std::vector<std::vector<int>>& extras);
 
 	int numberOfNeighbors(int atomIndex) const {
-		assert(_context.neighborLists);
-		const int* neighborList = _context.neighborLists->constDataInt() + (size_t)atomIndex * _context.neighborLists->componentCount();
-		size_t count = 0;
-		while(count < _context.neighborLists->componentCount() && neighborList[count] != -1){
-			count++;
-		}
-		return count;
+		assert(_context.neighborCounts);
+		return _context.neighborCounts->getInt(atomIndex);
 	}
 	
 	int getNeighbor(int centralAtomIndex, int neighborListIndex) const{
-		assert(_context.neighborLists);
-		return _context.neighborLists->getIntComponent(centralAtomIndex, neighborListIndex);
+		assert(_context.neighborOffsets && _context.neighborIndices);
+		const int count = _context.neighborCounts->getInt(centralAtomIndex);
+		if(neighborListIndex < 0 || neighborListIndex >= count){
+			return -1;
+		}
+		const int* offsets = _context.neighborOffsets->constDataInt();
+		const int* indices = _context.neighborIndices->constDataInt();
+		const int start = offsets[centralAtomIndex];
+		return indices[start + neighborListIndex];
 	}
 
 	int findNeighbor(int centralAtomIndex, int neighborAtomIndex) const{
-		assert(_context.neighborLists);
-		const int* neighborList = _context.neighborLists->constDataInt() + (size_t)centralAtomIndex * _context.neighborLists->componentCount();
-		for(size_t index = 0; index < _context.neighborLists->componentCount() && neighborList[index] != -1; index++){
-			if(neighborList[index] == neighborAtomIndex){
+		assert(_context.neighborOffsets && _context.neighborIndices);
+		const int count = _context.neighborCounts->getInt(centralAtomIndex);
+		const int* offsets = _context.neighborOffsets->constDataInt();
+		const int* indices = _context.neighborIndices->constDataInt();
+		const int start = offsets[centralAtomIndex];
+		for(int index = 0; index < count; index++){
+			if(indices[start + index] == neighborAtomIndex){
 				return index;
 			}
 		}
@@ -99,7 +105,9 @@ public:
 	}
 	
 	void freeNeighborLists(){
-		_context.neighborLists.reset();
+		_context.neighborOffsets.reset();
+		_context.neighborIndices.reset();
+		_context.neighborCounts.reset();
 		_context.atomSymmetryPermutations.reset();
 	}
 
@@ -163,11 +171,11 @@ public:
         return namedStats;
     }
     
-    void invalidateStatistics() {
-        _statisticsValid = false;
-    }
+	void invalidateStatistics() {
+		_statisticsValid = false;
+	}
     
-    std::string getStructureTypeName(int structureType) const {
+	std::string getStructureTypeName(int structureType) const {
 		if (usingPTM()) {
             switch (static_cast<StructureType>(structureType)) {
                 case StructureType::OTHER: return "OTHER";
@@ -257,6 +265,8 @@ public:
 
 		return stats;
 	}
+
+
 
 private:
 	void storeDeformationGradient(const PTM::Kernel& kernel, size_t atomIndex);

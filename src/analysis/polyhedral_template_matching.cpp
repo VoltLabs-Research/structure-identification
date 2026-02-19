@@ -194,9 +194,13 @@ Quaternion PTM::Kernel::orientation() const{
 }
 
 struct ptmnbrdata_t{
+    using NeighborResults = BoundedPriorityQueue<NearestNeighborFinder::Neighbor, std::less<NearestNeighborFinder::Neighbor>, PTM::MAX_INPUT_NEIGHBORS>;
+
     const PTM* neighFinder;
     const int* particleTypes;
     const std::vector<uint64_t>* cachedNeighbors;
+    size_t centralAtomIndex;
+    const NeighborResults* centralResults;
 };
 
 static int getNeighbors(void* vdata, size_t, size_t atomIndex, int numRequested, ptm_atomicenv_t* env){
@@ -206,8 +210,11 @@ static int getNeighbors(void* vdata, size_t, size_t atomIndex, int numRequested,
     const auto& cachedNeighbors = *neighborData->cachedNeighbors;
 
     NearestNeighborFinder::Query<PTM::MAX_INPUT_NEIGHBORS> query(*finder);
-    query.findNeighbors(atomIndex, false);
-    const auto &results = query.results();
+    const bool useCentralResults = neighborData->centralResults && atomIndex == neighborData->centralAtomIndex;
+    if(!useCentralResults){
+        query.findNeighbors(atomIndex, false);
+    }
+    const auto &results = useCentralResults ? *neighborData->centralResults : query.results();
 
     int numNeighbors = std::min(numRequested - 1, static_cast<int>(results.size()));
 
@@ -260,6 +267,8 @@ StructureType PTM::Kernel::identifyStructure(size_t particleIndex, const std::ve
     nbrdata.neighFinder = &_algorithm; 
     nbrdata.particleTypes = _algorithm._identifyOrdering ? _algorithm._particleTypes : nullptr;
     nbrdata.cachedNeighbors = &cachedNeighbors;
+    nbrdata.centralAtomIndex = particleIndex;
+    nbrdata.centralResults = &results();
 
     // TODO: Segmentation fault with ICO & SC & GRAPHENE
     int32_t flags = PTM_CHECK_SC | PTM_CHECK_FCC | PTM_CHECK_HCP | PTM_CHECK_BCC | PTM_CHECK_DCUB | PTM_CHECK_DHEX;

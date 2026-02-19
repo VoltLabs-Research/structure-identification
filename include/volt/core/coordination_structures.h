@@ -16,9 +16,9 @@ public:
     CoordinationStructures(ParticleProperty* structureTypes, LatticeStructureType inputCrystalType, bool identifyPlanarDefects, const SimulationCell& simCell);
 
     double determineLocalStructure(
-        const NearestNeighborFinder& neighList, 
+        const NearestNeighborFinder& neighList,
         int particleIndex,
-        std::shared_ptr<ParticleProperty> neighborLists
+        int* outNeighborCount
     ) const;
     
     static void initializeStructures();

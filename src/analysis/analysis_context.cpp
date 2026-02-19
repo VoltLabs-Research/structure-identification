@@ -18,7 +18,8 @@ AnalysisContext::AnalysisContext(
     inputCrystalType(crystalType),
     preferredCrystalOrientations(std::move(preferredOrientations)),
     
-    neighborLists(nullptr),
+    neighborOffsets(nullptr),
+    neighborIndices(nullptr),
     ptmRmsd(nullptr),
     ptmOrientation(nullptr),
     ptmDeformationGradient(nullptr)

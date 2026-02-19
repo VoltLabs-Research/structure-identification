@@ -195,13 +195,13 @@ double CoordinationStructures::computeLocalCutoff(
 double CoordinationStructures::determineLocalStructure(
 	const NearestNeighborFinder& neighList, 
 	int particleIndex,
-	std::shared_ptr<ParticleProperty> neighborLists
+	int* outNeighborCount
 ) const { 
-    std::vector<int> neighborIndices(MAX_NEIGHBORS);
-    std::vector<Vector3> neighborVectors(MAX_NEIGHBORS);
-    std::vector<int> cnaSignatures(MAX_NEIGHBORS);
-    std::vector<int> neighborMapping(MAX_NEIGHBORS);
-    std::vector<int> previousMapping(MAX_NEIGHBORS);
+    std::array<int, MAX_NEIGHBORS> neighborIndices;
+    std::array<Vector3, MAX_NEIGHBORS> neighborVectors;
+    std::array<int, MAX_NEIGHBORS> cnaSignatures;
+    std::array<int, MAX_NEIGHBORS> neighborMapping;
+    std::array<int, MAX_NEIGHBORS> previousMapping;
 
     NeighborBondArray neighborArray;
 
@@ -277,7 +277,10 @@ double CoordinationStructures::determineLocalStructure(
     // Set central atom type
     _structureTypes->setInt(particleIndex, static_cast<int>(atomStructure));
 
-    // Fill neighborLists 
+	if(outNeighborCount){
+		*outNeighborCount = coordinationNumber;
+	}
+
 	for(int i = 0; i < coordinationNumber; i++){
 		const Vector3& neighborVector = neighborVectors[neighborMapping[i]];
 		for(int dim = 0; dim < 3; dim++){
@@ -287,7 +290,6 @@ double CoordinationStructures::determineLocalStructure(
 				}
 			}
 		}
-		neighborLists->setIntComponent(particleIndex, i, neighborIndices[neighborMapping[i]]);
 	}
 
 	return localCutoff;

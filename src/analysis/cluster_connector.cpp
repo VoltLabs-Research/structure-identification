@@ -2,7 +2,6 @@
 #include <tbb/parallel_for.h>
 #include <tbb/blocked_range.h>
 #include <tbb/parallel_reduce.h>
-#include <execution>
 #include <limits>
 #include <cmath>
 
@@ -13,24 +12,7 @@ namespace Volt{
 ClusterConnector::ClusterConnector(
     StructureAnalysis& sa,
     AnalysisContext& context
-) : _sa(sa), _context(context){
-    _neighborMutexes = std::make_unique<tbb::spin_mutex[]>(1024);
-}
-
-void ClusterConnector::connectClusterNeighbors(int atomIndex, Cluster* cluster1){
-    int structureType = _context.structureTypes->getInt(atomIndex);
-    const LatticeStructure& latticeStructure = CoordinationStructures::getLatticeStruct(structureType);
-    const CoordinationStructure& coordStructure = CoordinationStructures::getCoordStruct(structureType);
-    int symPermIndex = _context.atomSymmetryPermutations->getInt(atomIndex);
-    const auto& permutation = latticeStructure.permutations[symPermIndex].permutation;
-
-    const int nn = _sa.numberOfNeighbors(atomIndex); 
-    for(int ni = 0; ni < nn; ++ni){
-        int neighbor = _sa.getNeighbor(atomIndex, ni);
-        if(neighbor < 0 || neighbor == atomIndex) continue;
-        processNeighborConnection(atomIndex, neighbor, ni, cluster1, structureType);
-    }
-}
+) : _sa(sa), _context(context){}
 
 // Groups atoms with the same structure (FCC, BCC, HCP, etc.).
 Cluster* ClusterConnector::startNewCluster(int atomIndex, int structureType){
@@ -188,22 +170,11 @@ void ClusterConnector::createNewClusterTransition(int atomIndex, int neighbor, i
     }
 }
 
-void ClusterConnector::addReverseNeighbor(int neighbor, int atomIndex){
-    tbb::spin_mutex::scoped_lock lock(_neighborMutexes[neighbor & 1023]);
-    int otherListCount = _sa.numberOfNeighbors(neighbor);
-    if(otherListCount < _context.neighborLists->componentCount()){
-        _context.neighborLists->setIntComponent(neighbor, otherListCount, atomIndex);
-    }
-}
-
 void ClusterConnector::processNeighborConnection(int atomIndex, int neighbor, int neighborIndex, Cluster* cluster1, int structureType){
     if (neighbor < 0 || static_cast<size_t>(neighbor) >= _context.atomCount()) return; 
 
     int neighborClusterId = _context.atomClusters->getInt(neighbor);
-    if(neighborClusterId == 0){
-        addReverseNeighbor(neighbor, atomIndex);
-        return;
-    }
+    if(neighborClusterId == 0) return;
 
     if(neighborClusterId == cluster1->id) return;
 
@@ -235,19 +206,51 @@ Cluster* ClusterConnector::getParentGrain(Cluster* c){
 }
 
 void ClusterConnector::connectClusters(){
+    std::vector<std::vector<int>> extras(_context.atomCount());
+    auto addExtra = [&](int neighbor, int atomIndex){
+        extras[neighbor].push_back(atomIndex);
+    };
+
     // Process atoms sequentially for deterministic cluster transition creation order
     for(size_t atomIndex = 0; atomIndex < _context.atomCount(); ++atomIndex){
-        processAtomConnections(atomIndex);
-    }
-    spdlog::info("Number of cluster transitions: {}", _sa.clusterGraph().clusterTransitions().size());
-}
+        int clusterId = _context.atomClusters->getInt(atomIndex);
+        if(clusterId == 0) continue;
+        Cluster* cluster1 = _sa.clusterGraph().findCluster(clusterId);
+        const int nn = _sa.numberOfNeighbors(atomIndex);
+        for(int ni = 0; ni < nn; ++ni){
+            int neighbor = _sa.getNeighbor(atomIndex, ni);
+            if(neighbor < 0 || neighbor == static_cast<int>(atomIndex)) continue;
 
-void ClusterConnector::processAtomConnections(size_t atomIndex){
-    int clusterId = _context.atomClusters->getInt(atomIndex);
-    if(clusterId == 0) return;
-    Cluster* cluster1 = _sa.clusterGraph().findCluster(clusterId);
-    //assert(cluster1);
-    connectClusterNeighbors(atomIndex, cluster1);
+            int neighborClusterId = _context.atomClusters->getInt(neighbor);
+            if(neighborClusterId == 0){
+                addExtra(neighbor, static_cast<int>(atomIndex));
+                continue;
+            }
+
+            if(neighborClusterId == cluster1->id) continue;
+
+            Cluster* cluster2 = _sa.clusterGraph().findCluster(neighborClusterId);
+            if(ClusterTransition* existing = cluster1->findTransition(cluster2)){
+                existing->area++;
+                existing->reverse->area++;
+                continue;
+            }
+
+            Matrix3 transition;
+            if(!calculateMisorientation(static_cast<int>(atomIndex), neighbor, ni, transition)){
+                continue;
+            }
+            if(!transition.isOrthogonalMatrix()) continue;
+            if(!cluster1->findTransition(cluster2)){
+                ClusterTransition* t = _sa.clusterGraph().createClusterTransition(cluster1, cluster2, transition);
+                t->area++;
+                t->reverse->area++;
+            }
+        }
+    }
+
+    _sa.appendNeighbors(extras);
+    spdlog::info("Number of cluster transitions: {}", _sa.clusterGraph().clusterTransitions().size());
 }
 
 void ClusterConnector::processDefectClusters(){

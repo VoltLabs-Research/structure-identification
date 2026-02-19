@@ -11,7 +11,9 @@ public:
     ParticleProperty* positions;
     ParticleProperty* structureTypes;
     ParticleProperty* particleSelection;
-    std::shared_ptr<ParticleProperty> neighborLists;
+    std::shared_ptr<ParticleProperty> neighborOffsets;  
+    std::shared_ptr<ParticleProperty> neighborIndices;
+    std::shared_ptr<ParticleProperty> neighborCounts;
     std::shared_ptr<ParticleProperty> atomClusters;
     std::shared_ptr<ParticleProperty> atomSymmetryPermutations;
 

@@ -21,8 +21,6 @@ private:
 	void initializeClustersForSuperclusterFormation();
 	void processDefectClusters();
 
-	void connectClusterNeighbors(int atomIndex, Cluster* cluster1);
-	void processAtomConnections(size_t atomIndex);
 
 	void mergeCompatibleGrains(size_t oldTransitionCount, size_t newTransitionCount);
 	void finalizeParentGrains();
@@ -52,7 +50,6 @@ void growClusterPTM(Cluster* cluster, std::deque<int>& atomsToVisit, int structu
 	Matrix3 quaternionToMatrix(const Quaternion& q);
 
 	void processNeighborConnection(int atomIndex, int neighbor, int neighborIndex, Cluster* cluster1, int structureType);
-	void addReverseNeighbor(int neighbor, int atomIndex);
 	void createNewClusterTransition(int atomIndex, int neighbor, int neighborIndex, Cluster* cluster1, Cluster* cluster2);
 
 	void processDefectCluster(Cluster* defectCluster);
@@ -61,7 +58,6 @@ void growClusterPTM(Cluster* cluster, std::deque<int>& atomsToVisit, int structu
 
     AnalysisContext& _context;
     StructureAnalysis& _sa;
-    std::unique_ptr<tbb::spin_mutex[]> _neighborMutexes;
 };
 
 }

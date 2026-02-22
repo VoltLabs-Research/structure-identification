@@ -209,6 +209,15 @@ public:
             }
         }
     }
+
+	std::string getAnalysisMethodName() const {
+		switch(_identificationMode){
+			case Mode::PTM: return "PTM";
+			case Mode::CNA: return "CNA";
+			case Mode::DIAMOND: return "DIAMOND";
+			default: return "UNKNOWN";
+		}
+	}
     
     json getStructureStatisticsJson() const{
 		if(!_statisticsValid) calculateStructureStatistics();
@@ -217,6 +226,7 @@ public:
 		const double invN = (N > 0) ? (100.0 / static_cast<double>(N)) : 0.0;
 		json stats = json::object();
 		stats["total_atoms"] = N;
+		stats["analysis_method"] = getAnalysisMethodName();
 
 		json typeStats = json::object();
 		int totalIdentified = 0;

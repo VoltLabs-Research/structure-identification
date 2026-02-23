@@ -52,19 +52,20 @@ bool exportPTMData(
     writer.write_key("data");
     writer.write_array_header(JsonUtils::checked_u32_size(ids.size()));
 
-    const bool includeStructureType = context.structureTypes && context.structureTypes->size() >= ids.size();
     for(size_t index = 0; index < ids.size(); ++index){
-        writer.write_map_header(includeStructureType ? 4u : 3u);
+        writer.write_map_header(4u);
         writer.write_key("id");
         writer.write_int(static_cast<int64_t>(ids[index]));
 
         writer.write_key("correspondence");
         writer.write_uint(static_cast<uint64_t>(correspondences->getInt64(index)));
 
-        if(includeStructureType){
-            writer.write_key("structure_type");
-            writer.write_int(static_cast<int64_t>(context.structureTypes->getInt(static_cast<int>(index))));
+        int structureType = static_cast<int>(StructureType::OTHER);
+        if(context.structureTypes && index < context.structureTypes->size()){
+            structureType = context.structureTypes->getInt(static_cast<int>(index));
         }
+        writer.write_key("structure_type");
+        writer.write_int(static_cast<int64_t>(structureType));
 
         writer.write_key("orientation");
         writer.write_array_header(4);

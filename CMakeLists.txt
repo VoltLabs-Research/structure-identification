@@ -35,7 +35,6 @@ set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS Debug Release MinSizeRel Re
 # Find CoreToolkit dependency
 find_package(coretoolkit REQUIRED)
 find_package(spdlog REQUIRED)
-find_package(fmt REQUIRED)
 find_package(nlohmann_json REQUIRED)
 
 file(GLOB_RECURSE LIBRARY_SOURCES CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/src/*.cpp)
@@ -55,7 +54,6 @@ target_compile_definitions(${PROJECT_NAME} PUBLIC
 target_link_libraries(${PROJECT_NAME} PUBLIC
 	coretoolkit::coretoolkit
 	spdlog::spdlog
-	fmt::fmt
 	nlohmann_json::nlohmann_json
 )
 
@@ -66,7 +64,6 @@ target_link_libraries(structure PRIVATE
 	${PROJECT_NAME}
 	coretoolkit::coretoolkit
 	spdlog::spdlog
-	fmt::fmt
 	nlohmann_json::nlohmann_json
 )
 

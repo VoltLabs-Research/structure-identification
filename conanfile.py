@@ -11,7 +11,6 @@ class StructureIdentificationConan(ConanFile):
     requires = (
         "coretoolkit/1.0.0",
         "spdlog/1.14.1",
-        "fmt/10.2.1",
         "nlohmann_json/3.11.3",
     )
     exports_sources = "CMakeLists.txt", "include/*", "src/*"

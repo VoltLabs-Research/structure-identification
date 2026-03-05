@@ -29,53 +29,49 @@ void showUsage(const std::string& name){
     printHelpOption();
 }
 
-bool exportPTMData(
+json buildPtmPerAtomProperties(
     const AnalysisContext& context,
-    const std::vector<int>& ids,
-    const std::string& outputBase
+    const LammpsParser::Frame& frame,
+    const std::vector<int>& structureTypes
 ){
     const auto ptmOrientation = context.ptmOrientation;
     const auto correspondences = context.correspondencesCode;
 
-    if(!ptmOrientation || !correspondences){
-        return true;
-    }
+    json perAtom = json::array();
 
-    std::ofstream output(outputBase + "_ptm_data.msgpack", std::ios::binary);
-    if(!output.is_open()){
-        spdlog::error("Failed to open PTM output file.");
-        return false;
-    }
+    for(size_t index = 0; index < frame.natoms; ++index){
+        int atomId = index < frame.ids.size()
+            ? frame.ids[index]
+            : static_cast<int>(index);
 
-    MsgpackWriter writer(output);
-    writer.write_map_header(1);
-    writer.write_key("data");
-    writer.write_array_header(JsonUtils::checked_u32_size(ids.size()));
+        json atom;
+        atom["id"] = atomId;
+        atom["structure_type"] = structureTypes[index];
 
-    for(size_t index = 0; index < ids.size(); ++index){
-        writer.write_map_header(4u);
-        writer.write_key("id");
-        writer.write_int(static_cast<int64_t>(ids[index]));
-
-        writer.write_key("correspondence");
-        writer.write_uint(static_cast<uint64_t>(correspondences->getInt64(index)));
-
-        int structureType = static_cast<int>(StructureType::OTHER);
-        if(context.structureTypes && index < context.structureTypes->size()){
-            structureType = context.structureTypes->getInt(static_cast<int>(index));
+        if(index < static_cast<size_t>(frame.positions.size())){
+            const auto& pos = frame.positions[index];
+            atom["pos"] = {pos.x(), pos.y(), pos.z()};
+        }else{
+            atom["pos"] = {0.0, 0.0, 0.0};
         }
-        writer.write_key("structure_type");
-        writer.write_int(static_cast<int64_t>(structureType));
 
-        writer.write_key("orientation");
-        writer.write_array_header(4);
-        for(int component = 0; component < 4; ++component){
-            writer.write_double(ptmOrientation->getDoubleComponent(index, component));
+        if(correspondences){
+            atom["correspondence"] = static_cast<uint64_t>(correspondences->getInt64(index));
         }
+
+        if(ptmOrientation){
+            atom["orientation"] = {
+                ptmOrientation->getDoubleComponent(index, 0),
+                ptmOrientation->getDoubleComponent(index, 1),
+                ptmOrientation->getDoubleComponent(index, 2),
+                ptmOrientation->getDoubleComponent(index, 3)
+            };
+        }
+
+        perAtom.push_back(atom);
     }
 
-    spdlog::info("PTM data written to {}_ptm_data.msgpack", outputBase);
-    return true;
+    return perAtom;
 }
 
 int main(int argc, char* argv[]){
@@ -137,37 +133,21 @@ int main(int argc, char* argv[]){
         atomStructureTypes[static_cast<size_t>(atomIndex)] = context.structureTypes->getInt(atomIndex);
     }
 
-    if(!JsonUtils::writeJsonMsgpackToFile(
-        analysis.getAtomsData(frame, &atomStructureTypes),
-        outputBase + "_atoms.msgpack",
-        false
-    )){
-        spdlog::error("Failed to write atoms.msgpack");
-        return 1;
-    }
-
-    if(!JsonUtils::writeJsonMsgpackToFile(
-        analysis.getStructureStatisticsJson(),
-        outputBase + "_structure_analysis_stats.msgpack",
-        false
-    )){
-        spdlog::error("Failed to write structure_analysis_stats.msgpack");
-        return 1;
-    }
-
-    std::vector<int> atomIds(static_cast<size_t>(frame.natoms));
-    for(int atomIndex = 0; atomIndex < frame.natoms; ++atomIndex){
-        atomIds[static_cast<size_t>(atomIndex)] = atomIndex < static_cast<int>(frame.ids.size())
-            ? frame.ids[static_cast<size_t>(atomIndex)]
-            : atomIndex;
-    }
+    json result;
+    result["main_listing"] = analysis.buildMainListing();
 
     if(mode == StructureAnalysis::Mode::PTM){
-        if(!exportPTMData(context, atomIds, outputBase)){
-            return 1;
-        }
+        result["per-atom-properties"] = buildPtmPerAtomProperties(context, frame, atomStructureTypes);
+    }else{
+        result["per-atom-properties"] = analysis.getPerAtomProperties(frame, &atomStructureTypes);
     }
 
-    spdlog::info("Structure identification completed.");
+    const std::string outputPath = outputBase + "_structure_identification.msgpack";
+    if(!JsonUtils::writeJsonMsgpackToFile(result, outputPath, false)){
+        spdlog::error("Failed to write {}", outputPath);
+        return 1;
+    }
+
+    spdlog::info("Structure identification completed. Output: {}", outputPath);
     return 0;
 }

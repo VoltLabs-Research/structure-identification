@@ -39,7 +39,7 @@ public:
 
 	void computeMaximumNeighborDistance();
 
-	json getAtomsData(
+	json getPerAtomProperties(
 		const LammpsParser::Frame &frame,
 		const std::vector<int>* structureTypes
 	);
@@ -219,17 +219,11 @@ public:
 		}
 	}
     
-    json getStructureStatisticsJson() const{
+    json buildMainListing() const{
 		if(!_statisticsValid) calculateStructureStatistics();
 
 		const int N = _context.atomCount();
 		const double invN = (N > 0) ? (100.0 / static_cast<double>(N)) : 0.0;
-		json stats = json::object();
-		stats["total_atoms"] = N;
-		stats["analysis_method"] = getAnalysisMethodName();
-
-		json typeStats = json::object();
-		int totalIdentified = 0;
 
 		constexpr int K = static_cast<int>(StructureType::NUM_STRUCTURE_TYPES);
 		std::vector<std::string> nameCache(K);
@@ -244,36 +238,34 @@ public:
 			return nameCache[idx];
 		};
 
-		for(const auto& [structureType, count] : _structureStatistics){
-			const std::string& name = getNameCached(structureType);
-
-			json& typeInfo = typeStats[name];
-			typeInfo = json::object();
-			typeInfo["count"] = count;
-			typeInfo["percentage"] = static_cast<double>(count) * invN;
-			typeInfo["type_id"] = structureType;
-
-			if(structureType != static_cast<int>(StructureType::OTHER) &&
-				structureType != static_cast<int>(CoordinationStructureType::COORD_OTHER)){
-				totalIdentified += count;
-			}
-		}
-
+		int totalIdentified = 0;
 		int unidentified = 0;
 		auto itOther = _structureStatistics.find(static_cast<int>(StructureType::OTHER));
 		if(itOther != _structureStatistics.end()){
 			unidentified = itOther->second;
 		}
 
-		stats["structure_types"] = std::move(typeStats);
-		stats["summary"] = {
-			{"total_identified", totalIdentified},
-			{"total_unidentified", unidentified},
-			{"identification_rate", static_cast<double>(totalIdentified) * invN},
-			{"unique_structure_types", static_cast<int>(_structureStatistics.size())}
-		};
+		json mainListing = json::object();
+		mainListing["total_atoms"] = N;
+		mainListing["analysis_method"] = getAnalysisMethodName();
 
-		return stats;
+		for(const auto& [structureType, count] : _structureStatistics){
+			std::string name = getNameCached(structureType);
+			std::transform(name.begin(), name.end(), name.begin(), ::tolower);
+			mainListing[name + "_count"] = count;
+			mainListing[name + "_percentage"] = static_cast<double>(count) * invN;
+			if(structureType != static_cast<int>(StructureType::OTHER) &&
+				structureType != static_cast<int>(CoordinationStructureType::COORD_OTHER)){
+				totalIdentified += count;
+			}
+		}
+
+		mainListing["total_identified"] = totalIdentified;
+		mainListing["total_unidentified"] = unidentified;
+		mainListing["identification_rate"] = static_cast<double>(totalIdentified) * invN;
+		mainListing["unique_structure_types"] = static_cast<int>(_structureStatistics.size());
+
+		return mainListing;
 	}
 
 

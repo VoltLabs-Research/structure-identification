@@ -66,44 +66,34 @@ StructureAnalysis::StructureAnalysis(
 
 }
 
-json StructureAnalysis::getAtomsData(
+json StructureAnalysis::getPerAtomProperties(
     const LammpsParser::Frame &frame,
     const std::vector<int>* structureTypes
 ){
-    std::map<std::string, json> groupedAtoms;
+    json perAtom = json::array();
 
     for(size_t i = 0; i < frame.natoms; ++i){
         int structureType = 0;
-        if(structureTypes && i < static_cast<int>(structureTypes->size())){
+        if(structureTypes && i < structureTypes->size()){
             structureType = (*structureTypes)[i];
         }
 
-        std::string typeName = getStructureTypeName(structureType);
-        
-        json atomJson;
-        atomJson["id"] = i;
-        atomJson["structure_type"] = structureType;
+        json atom;
+        atom["id"] = i < frame.ids.size() ? frame.ids[i] : static_cast<int>(i);
+        atom["structure_type"] = structureType;
+        atom["structure_name"] = getStructureTypeName(structureType);
 
-        if(usingPTM()){
-            //Quaternion quat = getPTMAtomOrientation(i);
-            //atomJson["ptm_quaternion"] = {quat.x(), quat.y(), quat.z(), quat.w()};
-        }
-
-        if(i < static_cast<int>(frame.positions.size())){
+        if(i < static_cast<size_t>(frame.positions.size())){
             const auto &pos = frame.positions[i];
-            atomJson["pos"] = {pos.x(), pos.y(), pos.z()};
+            atom["pos"] = {pos.x(), pos.y(), pos.z()};
         }else{
-            atomJson["pos"] = {0.0, 0.0, 0.0};
+            atom["pos"] = {0.0, 0.0, 0.0};
         }
 
-        if(!groupedAtoms[typeName].is_array()){
-            groupedAtoms[typeName] = json::array();
-        }
-
-        groupedAtoms[typeName].push_back(atomJson);
+        perAtom.push_back(atom);
     }
 
-    return json(groupedAtoms);
+    return perAtom;
 }
 
 bool StructureAnalysis::setupPTM(Volt::PTM& ptm, size_t N){

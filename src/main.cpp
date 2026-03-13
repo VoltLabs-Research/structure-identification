@@ -6,6 +6,7 @@
 #include <spdlog/spdlog.h>
 #include <fstream>
 #include <vector>
+#include <algorithm>
 #include <memory>
 
 using namespace Volt;
@@ -140,6 +141,58 @@ int main(int argc, char* argv[]){
         result["per-atom-properties"] = buildPtmPerAtomProperties(context, frame, atomStructureTypes);
     }else{
         result["per-atom-properties"] = analysis.getPerAtomProperties(frame, &atomStructureTypes);
+    }
+
+    // --- atoms.msgpack export (grouped by structure type for AtomisticExporter) ---
+    {
+        constexpr int K = static_cast<int>(StructureType::NUM_STRUCTURE_TYPES);
+
+        std::vector<std::string> names(K);
+        for(int st = 0; st < K; st++){
+            names[st] = analysis.getStructureTypeName(st);
+        }
+
+        std::vector<std::vector<size_t>> structureAtomIndices(K);
+        for(size_t i = 0; i < static_cast<size_t>(frame.natoms); ++i){
+            const int raw = atomStructureTypes[i];
+            const int st = (0 <= raw && raw < K) ? raw : 0;
+            structureAtomIndices[static_cast<size_t>(st)].push_back(i);
+        }
+
+        std::vector<int> structureOrder;
+        structureOrder.reserve(K);
+        for(int st = 0; st < K; st++){
+            if(!structureAtomIndices[static_cast<size_t>(st)].empty()){
+                structureOrder.push_back(st);
+            }
+        }
+        std::sort(structureOrder.begin(), structureOrder.end(), [&](int a, int b){
+            return names[a] < names[b];
+        });
+
+        json atomsByStructure;
+        for(int st : structureOrder){
+            json atomsArray = json::array();
+            for(size_t atomIndex : structureAtomIndices[static_cast<size_t>(st)]){
+                const Point3& pos = frame.positions[atomIndex];
+                atomsArray.push_back({
+                    {"id", frame.ids[atomIndex]},
+                    {"pos", { pos.x(), pos.y(), pos.z() }}
+                });
+            }
+            atomsByStructure[names[st]] = atomsArray;
+        }
+
+        json exportWrapper;
+        exportWrapper["export"] = json::object();
+        exportWrapper["export"]["AtomisticExporter"] = atomsByStructure;
+
+        const std::string atomsOutputPath = outputBase + "_atoms.msgpack";
+        if(!JsonUtils::writeJsonMsgpackToFile(exportWrapper, atomsOutputPath, false)){
+            spdlog::error("Failed to write {}", atomsOutputPath);
+            return 1;
+        }
+        spdlog::info("Atoms export written to {}", atomsOutputPath);
     }
 
     const std::string outputPath = outputBase + "_structure_identification.msgpack";

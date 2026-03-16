@@ -34,8 +34,23 @@ set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS Debug Release MinSizeRel Re
 
 # Find CoreToolkit dependency
 find_package(coretoolkit REQUIRED)
+find_package(TBB REQUIRED)
+find_package(Boost REQUIRED)
 find_package(spdlog REQUIRED)
 find_package(nlohmann_json REQUIRED)
+
+set(STRUCTURE_IDENTIFICATION_BOOST_TARGET "")
+if(TARGET Boost::headers)
+	set(STRUCTURE_IDENTIFICATION_BOOST_TARGET Boost::headers)
+elseif(TARGET Boost::boost)
+	set(STRUCTURE_IDENTIFICATION_BOOST_TARGET Boost::boost)
+elseif(TARGET boost::headers)
+	set(STRUCTURE_IDENTIFICATION_BOOST_TARGET boost::headers)
+elseif(TARGET boost::boost)
+	set(STRUCTURE_IDENTIFICATION_BOOST_TARGET boost::boost)
+else()
+	message(FATAL_ERROR "StructureIdentification requires a Boost headers target")
+endif()
 
 file(GLOB_RECURSE LIBRARY_SOURCES CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/src/*.cpp)
 list(FILTER LIBRARY_SOURCES EXCLUDE REGEX ".*main\\.cpp$")
@@ -52,6 +67,8 @@ target_compile_definitions(${PROJECT_NAME} PUBLIC
 )
 
 target_link_libraries(${PROJECT_NAME} PUBLIC
+	${STRUCTURE_IDENTIFICATION_BOOST_TARGET}
+	TBB::tbb
 	coretoolkit::coretoolkit
 	spdlog::spdlog
 	nlohmann_json::nlohmann_json
@@ -62,6 +79,8 @@ target_include_directories(structure PRIVATE ${CMAKE_SOURCE_DIR}/include)
 target_precompile_headers(structure PRIVATE <volt/core/volt.h>)
 target_link_libraries(structure PRIVATE
 	${PROJECT_NAME}
+	${STRUCTURE_IDENTIFICATION_BOOST_TARGET}
+	TBB::tbb
 	coretoolkit::coretoolkit
 	spdlog::spdlog
 	nlohmann_json::nlohmann_json

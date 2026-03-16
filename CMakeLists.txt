@@ -63,9 +63,6 @@ target_include_directories(${PROJECT_NAME} PUBLIC
 )
 target_precompile_headers(${PROJECT_NAME} PRIVATE <volt/core/volt.h>)
 
-target_compile_definitions(${PROJECT_NAME} PUBLIC
-)
-
 target_link_libraries(${PROJECT_NAME} PUBLIC
 	${STRUCTURE_IDENTIFICATION_BOOST_TARGET}
 	TBB::tbb
@@ -79,11 +76,6 @@ target_include_directories(structure PRIVATE ${CMAKE_SOURCE_DIR}/include)
 target_precompile_headers(structure PRIVATE <volt/core/volt.h>)
 target_link_libraries(structure PRIVATE
 	${PROJECT_NAME}
-	${STRUCTURE_IDENTIFICATION_BOOST_TARGET}
-	TBB::tbb
-	coretoolkit::coretoolkit
-	spdlog::spdlog
-	nlohmann_json::nlohmann_json
 )
 
 install(TARGETS structure DESTINATION bin)

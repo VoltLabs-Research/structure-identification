@@ -75,6 +75,7 @@ add_executable(structure ${CMAKE_SOURCE_DIR}/src/main.cpp)
 target_include_directories(structure PRIVATE ${CMAKE_SOURCE_DIR}/include)
 target_precompile_headers(structure PRIVATE <volt/core/volt.h>)
 target_link_libraries(structure PRIVATE
+	TBB::tbb
 	${PROJECT_NAME}
 )
 

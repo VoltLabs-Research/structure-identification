@@ -1,7 +1,10 @@
 #pragma once
 #include <volt/core/particle_property.h>
 #include <volt/core/simulation_cell.h>
-#include <volt/structures/lattice_structure.h>
+#include <volt/math/matrix3.h>
+#include <volt/structures/crystal_structure_types.h>
+
+#include <vector>
 
 namespace Volt{
 

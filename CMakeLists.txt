@@ -52,8 +52,13 @@ else()
 	message(FATAL_ERROR "StructureIdentification requires a Boost headers target")
 endif()
 
-file(GLOB_RECURSE LIBRARY_SOURCES CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/src/*.cpp)
-list(FILTER LIBRARY_SOURCES EXCLUDE REGEX ".*main\\.cpp$")
+set(LIBRARY_SOURCES
+	${CMAKE_SOURCE_DIR}/src/analysis/analysis_context.cpp
+	${CMAKE_SOURCE_DIR}/src/analysis/cluster_connector.cpp
+	${CMAKE_SOURCE_DIR}/src/analysis/structure_analysis.cpp
+	${CMAKE_SOURCE_DIR}/src/analysis/structure_analysis_dispatch.cpp
+	${CMAKE_SOURCE_DIR}/src/structures/cluster_graph.cpp
+)
 
 add_library(${PROJECT_NAME} STATIC ${LIBRARY_SOURCES})
 set_target_properties(${PROJECT_NAME} PROPERTIES POSITION_INDEPENDENT_CODE ON)
@@ -71,14 +76,5 @@ target_link_libraries(${PROJECT_NAME} PUBLIC
 	nlohmann_json::nlohmann_json
 )
 
-add_executable(structure ${CMAKE_SOURCE_DIR}/src/main.cpp)
-target_include_directories(structure PRIVATE ${CMAKE_SOURCE_DIR}/include)
-target_precompile_headers(structure PRIVATE <volt/core/volt.h>)
-target_link_libraries(structure PRIVATE
-	TBB::tbb
-	${PROJECT_NAME}
-)
-
-install(TARGETS structure DESTINATION bin)
 install(TARGETS ${PROJECT_NAME} DESTINATION lib)
 install(DIRECTORY ${CMAKE_SOURCE_DIR}/include/ DESTINATION include)

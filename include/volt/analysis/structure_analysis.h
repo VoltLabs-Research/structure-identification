@@ -5,16 +5,18 @@
 #include <volt/core/simulation_cell.h>
 #include <volt/structures/cluster_graph.h>
 #include <volt/structures/crystal_structure_types.h>
-#include <volt/structures/neighbor_bond_array.h>
-#include <volt/structures/coordination_structure.h>
-#include <volt/structures/lattice_structure.h>
-#include <volt/core/coordination_structures.h>
-#include <volt/analysis/polyhedral_template_matching.h>
 #include <volt/analysis/analysis_context.h>
 #include <volt/core/lammps_parser.h>
-#include <volt/analysis/ptm_neighbor_finder.h>
 #include <nlohmann/json.hpp>
+
+#include <algorithm>
+#include <atomic>
+#include <cassert>
+#include <map>
+#include <memory>
 #include <mutex>
+#include <string>
+#include <vector>
 
 using json = nlohmann::json;
 
@@ -34,10 +36,9 @@ public:
 		Mode identificationMode,
 		float rmsd
 	);
+	~StructureAnalysis();
 
 	void identifyStructures();
-
-	void computeMaximumNeighborDistance();
 
 	json getPerAtomProperties(
 		const LammpsParser::Frame &frame,
@@ -124,18 +125,16 @@ public:
 	}
 
 	int findClosestSymmetryPermutation(int structureType, const Matrix3& rotation);
+	int coordinationNumber(int structureType) const;
+	int commonNeighborIndex(int structureType, int neighborIndex, int commonNeighborSlot) const;
+	int symmetryPermutationCount(int structureType) const;
+	int symmetryPermutationEntry(int structureType, int symmetryIndex, int neighborIndex) const;
+	const Matrix3& symmetryTransformation(int structureType, int symmetryIndex) const;
+	int symmetryInverseProduct(int structureType, int symmetryIndex, int transformationIndex) const;
+	const Vector3& latticeVector(int structureType, int latticeVectorIndex) const;
 
 	// Returns the ideal lattice vector associated with a neighbor bond
-	const Vector3& neighborLatticeVector(int centralAtomIndex, int neighborIndex) const{
-		assert(_context.atomSymmetryPermutations);
-		int structureType = _context.structureTypes->getInt(centralAtomIndex);
-		const LatticeStructure& latticeStructure = CoordinationStructures::getLatticeStruct(structureType);
-		assert(neighborIndex >= 0 && neighborIndex < CoordinationStructures::getCoordStruct(structureType).numNeighbors);
-		int symmetryPermutationIndex = _context.atomSymmetryPermutations->getInt(centralAtomIndex);
-		assert(symmetryPermutationIndex >= 0 && symmetryPermutationIndex < latticeStructure.permutations.size());
-		const auto& permutation = latticeStructure.permutations[symmetryPermutationIndex].permutation;
-		return latticeStructure.latticeVectors[permutation[neighborIndex]];
-	}
+	const Vector3& neighborLatticeVector(int centralAtomIndex, int neighborIndex) const;
 
 	void calculateStructureStatistics() const {
         _structureStatistics.clear();
@@ -271,26 +270,12 @@ public:
 
 
 private:
-	void storeDeformationGradient(const PTM::Kernel& kernel, size_t atomIndex);
-	void storeOrientationData(const PTM::Kernel& kernel, size_t atomIndex);
-	void storeNeighborIndices(const PTM::Kernel& kernel, size_t atomIndex);
-
-	void processPTMAtom(
-		PTM::Kernel& kernel,
-		size_t atomIndex,
-		StructureType type,
-		const std::vector<uint64_t>& cached,
-		float cutoff
-	);
-
-	bool setupPTM(Volt::PTM& ptm, size_t N);
-
 	mutable std::map<int, int> _structureStatistics;
     mutable bool _statisticsValid = false;
 
 	Mode _identificationMode;
 	AnalysisContext& _context;
-	CoordinationStructures _coordStructures;
+	bool _identifyPlanarDefects;
 	std::mutex cluster_graph_mutex;
 	
 	float _rmsd;

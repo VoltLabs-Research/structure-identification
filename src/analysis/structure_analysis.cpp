@@ -1,70 +1,94 @@
 #include <volt/core/volt.h>
 #include <volt/analysis/structure_analysis.h>
+#include <spdlog/spdlog.h>
+
+#include <algorithm>
 
 namespace Volt {
 
-StructureAnalysis::StructureAnalysis(
-    AnalysisContext& context,
-    bool identifyPlanarDefects, 
-    Mode identificationMode,
-    float rmsd
-) :
-    _context(context),
-    _identificationMode(identificationMode),
-    _identifyPlanarDefects(identifyPlanarDefects),
-    _rmsd(rmsd),    
-    _clusterGraph(std::make_unique<ClusterGraph>())
-{
-    _context.atomSymmetryPermutations = std::make_shared<ParticleProperty>(
-        _context.atomCount(), DataType::Int, 1, 0, true);
+namespace{
 
-    _context.neighborOffsets = std::make_shared<ParticleProperty>(
-        _context.atomCount() + 1, DataType::Int, 1, 0, true);
-
-    _context.neighborCounts = std::make_shared<ParticleProperty>(
-        _context.atomCount(), DataType::Int, 1, 0, true);
-
-    _context.templateIndex = std::make_shared<ParticleProperty>(
-        _context.atomCount(), DataType::Int, 1, 0, true);
-
-    std::fill(_context.neighborOffsets->dataInt(),
-              _context.neighborOffsets->dataInt() + _context.neighborOffsets->size(),
-              0);
-    std::fill(_context.structureTypes->dataInt(),
-              _context.structureTypes->dataInt() + _context.structureTypes->size(),
-              LATTICE_OTHER);
+const StructureAnalysisCrystalInfo& requireCrystalInfo(
+    const std::shared_ptr<const StructureAnalysisCrystalInfo>& crystalInfoProvider
+){
+    if(!crystalInfoProvider){
+        throw std::runtime_error("StructureAnalysis crystal information provider has not been configured.");
+    }
+    return *crystalInfoProvider;
 }
 
-StructureAnalysis::~StructureAnalysis() = default;
+AnalysisContext& requireAnalysisContext(StructureContext& context){
+    auto* analysisContext = dynamic_cast<AnalysisContext*>(&context);
+    if(!analysisContext){
+        throw std::runtime_error("StructureAnalysis operation requires AnalysisContext.");
+    }
+    return *analysisContext;
+}
 
-json StructureAnalysis::getPerAtomProperties(
-    const LammpsParser::Frame &frame,
-    const std::vector<int>* structureTypes
-){
-    json perAtom = json::array();
+const AnalysisContext& requireAnalysisContext(const StructureContext& context){
+    auto* analysisContext = dynamic_cast<const AnalysisContext*>(&context);
+    if(!analysisContext){
+        throw std::runtime_error("StructureAnalysis operation requires AnalysisContext.");
+    }
+    return *analysisContext;
+}
 
-    for(size_t i = 0; i < frame.natoms; ++i){
-        int structureType = 0;
-        if(structureTypes && i < structureTypes->size()){
-            structureType = (*structureTypes)[i];
-        }
+}
 
-        json atom;
-        atom["id"] = i < frame.ids.size() ? frame.ids[i] : static_cast<int>(i);
-        atom["structure_type"] = structureType;
-        atom["structure_name"] = getStructureTypeName(structureType);
-
-        if(i < static_cast<size_t>(frame.positions.size())){
-            const auto &pos = frame.positions[i];
-            atom["pos"] = {pos.x(), pos.y(), pos.z()};
-        }else{
-            atom["pos"] = {0.0, 0.0, 0.0};
-        }
-
-        perAtom.push_back(atom);
+StructureAnalysis::StructureAnalysis(
+    StructureContext& context
+) :
+    _context(context),
+    _clusterGraph(std::make_unique<ClusterGraph>())
+{
+    if(!_context.atomClusters){
+        _context.atomClusters = std::make_shared<ParticleProperty>(_context.atomCount(), DataType::Int, 1, 0, true);
+    }
+    if(!_context.neighborOffsets){
+        _context.neighborOffsets = std::make_shared<ParticleProperty>(_context.atomCount() + 1, DataType::Int, 1, 0, true);
+        std::fill(_context.neighborOffsets->dataInt(), _context.neighborOffsets->dataInt() + _context.neighborOffsets->size(), 0);
+    }
+    if(!_context.neighborCounts){
+        _context.neighborCounts = std::make_shared<ParticleProperty>(_context.atomCount(), DataType::Int, 1, 0, true);
     }
 
-    return perAtom;
+    if(_context.structureTypes){
+        if(!_context.atomSymmetryPermutations){
+            _context.atomSymmetryPermutations = std::make_shared<ParticleProperty>(_context.atomCount(), DataType::Int, 1, 0, true);
+        }
+        std::fill(_context.structureTypes->dataInt(), _context.structureTypes->dataInt() + _context.structureTypes->size(), LATTICE_OTHER);
+    }
+}
+
+int StructureAnalysis::getNeighbor(int centralAtomIndex, int neighborListIndex) const{
+    assert(_context.neighborOffsets && _context.neighborIndices);
+    const int count = _context.neighborCounts->getInt(centralAtomIndex);
+
+    if(neighborListIndex < 0 || neighborListIndex >= count){
+        return -1;
+    }
+    
+    const int* offsets = _context.neighborOffsets->constDataInt();
+    const int* indices = _context.neighborIndices->constDataInt();
+    const int start = offsets[centralAtomIndex];
+
+    return indices[start + neighborListIndex];
+}
+
+int StructureAnalysis::findNeighbor(int centralAtomIndex, int neighborAtomIndex) const{
+    assert(_context.neighborOffsets && _context.neighborIndices);
+    const int count = _context.neighborCounts->getInt(centralAtomIndex);
+    const int* offsets = _context.neighborOffsets->constDataInt();
+    const int* indices = _context.neighborIndices->constDataInt();
+    const int start = offsets[centralAtomIndex];
+
+    for(int index = 0; index < count; index++){
+        if(indices[start + index] == neighborAtomIndex){
+            return index;
+        }
+    }
+
+    return -1;
 }
 
 void StructureAnalysis::appendNeighbors(const std::vector<std::vector<int>>& extras){
@@ -79,14 +103,61 @@ void StructureAnalysis::appendNeighbors(const std::vector<std::vector<int>>& ext
 
     const int* oldOffsets = _context.neighborOffsets->constDataInt();
     const int* oldIndices = _context.neighborIndices->constDataInt();
+    std::vector<std::vector<int>> filteredExtras(N);
+    std::size_t trimmedNeighborCount = 0;
+    std::size_t affectedAtomCount = 0;
+
     std::vector<int> newOffsets(N + 1, 0);
     for(size_t i = 0; i < N; ++i){
         const int oldCount = _context.neighborCounts->getInt(static_cast<int>(i));
-        const int extraCount = static_cast<int>(extras[i].size());
-        if(oldCount + extraCount > MAX_NEIGHBORS){
-            throw std::runtime_error("appendNeighbors: neighbor overflow");
+        if(oldCount > MAX_NEIGHBORS){
+            throw std::runtime_error("appendNeighbors: base neighbor overflow");
         }
-        newOffsets[i + 1] = newOffsets[i] + oldCount + extraCount;
+
+        const int startOld = oldOffsets[i];
+        auto& filtered = filteredExtras[i];
+        filtered.reserve(extras[i].size());
+
+        for(int neighbor : extras[i]){
+            if(neighbor < 0){
+                continue;
+            }
+
+            bool alreadyPresent = false;
+            for(int slot = 0; slot < oldCount; ++slot){
+                if(oldIndices[startOld + slot] == neighbor){
+                    alreadyPresent = true;
+                    break;
+                }
+            }
+            if(alreadyPresent){
+                continue;
+            }
+
+            if(std::find(filtered.begin(), filtered.end(), neighbor) != filtered.end()){
+                continue;
+            }
+
+            filtered.push_back(neighbor);
+        }
+
+        const int availableSlots = MAX_NEIGHBORS - oldCount;
+        if(static_cast<int>(filtered.size()) > availableSlots){
+            trimmedNeighborCount += static_cast<std::size_t>(filtered.size() - availableSlots);
+            affectedAtomCount++;
+            filtered.resize(static_cast<std::size_t>(availableSlots));
+        }
+
+        newOffsets[i + 1] = newOffsets[i] + oldCount + static_cast<int>(filtered.size());
+    }
+
+    if(trimmedNeighborCount > 0){
+        spdlog::warn(
+            "appendNeighbors trimmed {} appended neighbors across {} atoms to respect MAX_NEIGHBORS={}",
+            trimmedNeighborCount,
+            affectedAtomCount,
+            static_cast<int>(MAX_NEIGHBORS)
+        );
     }
 
     const size_t totalNeighbors = static_cast<size_t>(newOffsets[N]);
@@ -98,17 +169,104 @@ void StructureAnalysis::appendNeighbors(const std::vector<std::vector<int>>& ext
         const int oldCount = _context.neighborCounts->getInt(static_cast<int>(i));
         const int startOld = oldOffsets[i];
         const int startNew = newOffsets[i];
+        const auto& filtered = filteredExtras[i];
         std::copy(oldIndices + startOld, oldIndices + startOld + oldCount, newIndices + startNew);
-        if(!extras[i].empty()){
-            std::copy(extras[i].begin(), extras[i].end(), newIndices + startNew + oldCount);
+        if(!filtered.empty()){
+            std::copy(filtered.begin(), filtered.end(), newIndices + startNew + oldCount);
         }
-        _context.neighborCounts->setInt(static_cast<int>(i), oldCount + static_cast<int>(extras[i].size()));
+        _context.neighborCounts->setInt(static_cast<int>(i), oldCount + static_cast<int>(filtered.size()));
     }
 
     _context.neighborOffsets = std::make_shared<ParticleProperty>(
         N + 1, DataType::Int, 1, 0, false);
     std::copy(newOffsets.begin(), newOffsets.end(), _context.neighborOffsets->dataInt());
     _context.neighborIndices = std::move(newIndicesProp);
+}
+
+void StructureAnalysis::setNeighborLatticeVectorOverrides(
+    std::vector<Vector3> overrides,
+    std::size_t stride
+){
+    _neighborLatticeVectorOverrides = std::move(overrides);
+    _neighborLatticeVectorOverrideStride = stride;
+}
+
+void StructureAnalysis::setCrystalInfoProvider(
+    std::shared_ptr<const StructureAnalysisCrystalInfo> crystalInfoProvider
+){
+    _crystalInfoProvider = std::move(crystalInfoProvider);
+}
+
+AnalysisContext& StructureAnalysis::analysisContext(){
+    return requireAnalysisContext(_context);
+}
+
+const AnalysisContext& StructureAnalysis::analysisContext() const{
+    return requireAnalysisContext(_context);
+}
+
+int StructureAnalysis::findClosestSymmetryPermutation(int structureType, const Matrix3& rotation){
+    return requireCrystalInfo(_crystalInfoProvider).findClosestSymmetryPermutation(structureType, rotation);
+}
+
+int StructureAnalysis::coordinationNumber(int structureType) const{
+    return requireCrystalInfo(_crystalInfoProvider).coordinationNumber(structureType);
+}
+
+int StructureAnalysis::commonNeighborIndex(int structureType, int neighborIndex, int commonNeighborSlot) const{
+    return requireCrystalInfo(_crystalInfoProvider).commonNeighborIndex(
+        structureType,
+        neighborIndex,
+        commonNeighborSlot
+    );
+}
+
+int StructureAnalysis::symmetryPermutationCount(int structureType) const{
+    return requireCrystalInfo(_crystalInfoProvider).symmetryPermutationCount(structureType);
+}
+
+int StructureAnalysis::symmetryPermutationEntry(int structureType, int symmetryIndex, int neighborIndex) const{
+    return requireCrystalInfo(_crystalInfoProvider).symmetryPermutationEntry(
+        structureType,
+        symmetryIndex,
+        neighborIndex
+    );
+}
+
+const Matrix3& StructureAnalysis::symmetryTransformation(int structureType, int symmetryIndex) const{
+    return requireCrystalInfo(_crystalInfoProvider).symmetryTransformation(structureType, symmetryIndex);
+}
+
+int StructureAnalysis::symmetryInverseProduct(int structureType, int symmetryIndex, int transformationIndex) const{
+    return requireCrystalInfo(_crystalInfoProvider).symmetryInverseProduct(
+        structureType,
+        symmetryIndex,
+        transformationIndex
+    );
+}
+
+const Vector3& StructureAnalysis::latticeVector(int structureType, int latticeVectorIndex) const{
+    return requireCrystalInfo(_crystalInfoProvider).latticeVector(structureType, latticeVectorIndex);
+}
+
+const Vector3& StructureAnalysis::neighborLatticeVector(int centralAtomIndex, int neighborIndex) const{
+    if(hasNeighborLatticeVectorOverrides()){
+        const std::size_t stride = _neighborLatticeVectorOverrideStride;
+        assert(stride > 0);
+        const std::size_t flatIndex =
+            static_cast<std::size_t>(centralAtomIndex) * stride +
+            static_cast<std::size_t>(neighborIndex);
+        assert(flatIndex < _neighborLatticeVectorOverrides.size());
+        return _neighborLatticeVectorOverrides[flatIndex];
+    }
+
+    const auto& context = analysisContext();
+    assert(context.atomSymmetryPermutations);
+    const int structureType = context.structureTypes->getInt(centralAtomIndex);
+    assert(neighborIndex >= 0 && neighborIndex < coordinationNumber(structureType));
+    const int symmetryPermutationIndex = context.atomSymmetryPermutations->getInt(centralAtomIndex);
+    assert(symmetryPermutationIndex >= 0 && symmetryPermutationIndex < symmetryPermutationCount(structureType));
+    return latticeVector(structureType, symmetryPermutationEntry(structureType, symmetryPermutationIndex, neighborIndex));
 }
 
 }

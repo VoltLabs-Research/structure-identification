@@ -1,5 +1,7 @@
 #pragma once
 
+#include <string_view>
+
 namespace Volt{
 
 // Broad categories for crystal structures detected on an atom.
@@ -68,5 +70,54 @@ enum { MAX_NEIGHBORS = 16 };
 // Each bit in a CNAPairBond corresponds to one neighbor index;
 // the union of two bits marks a neighbor-neighbor bond.
 typedef unsigned int CNAPairBond;
+
+inline const char* latticeStructureTypeName(LatticeStructureType structure){
+    switch(structure){
+        case LATTICE_FCC:
+            return "FCC";
+        case LATTICE_HCP:
+            return "HCP";
+        case LATTICE_BCC:
+            return "BCC";
+        case LATTICE_CUBIC_DIAMOND:
+            return "CUBIC_DIAMOND";
+        case LATTICE_HEX_DIAMOND:
+            return "HEX_DIAMOND";
+        case LATTICE_SC:
+            return "SC";
+        case LATTICE_OTHER:
+        case NUM_LATTICE_TYPES:
+            break;
+    }
+    return "UNKNOWN";
+}
+
+inline bool parseLatticeStructureType(std::string_view text, LatticeStructureType& structure){
+    if(text == "FCC"){
+        structure = LATTICE_FCC;
+        return true;
+    }
+    if(text == "BCC"){
+        structure = LATTICE_BCC;
+        return true;
+    }
+    if(text == "HCP"){
+        structure = LATTICE_HCP;
+        return true;
+    }
+    if(text == "SC"){
+        structure = LATTICE_SC;
+        return true;
+    }
+    if(text == "CUBIC_DIAMOND"){
+        structure = LATTICE_CUBIC_DIAMOND;
+        return true;
+    }
+    if(text == "HEX_DIAMOND"){
+        structure = LATTICE_HEX_DIAMOND;
+        return true;
+    }
+    return false;
+}
 
 }

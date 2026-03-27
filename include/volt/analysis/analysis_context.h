@@ -3,34 +3,63 @@
 #include <volt/core/simulation_cell.h>
 #include <volt/math/matrix3.h>
 #include <volt/structures/crystal_structure_types.h>
+#include <volt/core/lammps_parser.h>
 
+#include <memory>
+#include <string>
 #include <vector>
 
 namespace Volt{
 
-class AnalysisContext{
+class StructureAnalysis;
+
+class StructureContext{
 public:
-    // Particle properties
     ParticleProperty* positions;
     ParticleProperty* structureTypes;
     ParticleProperty* particleSelection;
-    std::shared_ptr<ParticleProperty> neighborOffsets;  
+
+    double maximumNeighborDistance;
+    std::shared_ptr<ParticleProperty> neighborOffsets;
     std::shared_ptr<ParticleProperty> neighborIndices;
     std::shared_ptr<ParticleProperty> neighborCounts;
     std::shared_ptr<ParticleProperty> atomClusters;
     std::shared_ptr<ParticleProperty> atomSymmetryPermutations;
 
-    // PTM
-    std::shared_ptr<ParticleProperty> ptmRmsd;
-    std::shared_ptr<ParticleProperty> ptmOrientation;
-    std::shared_ptr<ParticleProperty> ptmDeformationGradient;
-    std::shared_ptr<ParticleProperty> correspondencesCode;
-    std::shared_ptr<ParticleProperty> templateIndex;
-
-    // Simulation
     const SimulationCell& simCell;
     LatticeStructureType inputCrystalType;
     std::vector<Matrix3> preferredCrystalOrientations;
+
+    StructureContext(
+        ParticleProperty* pos,
+        const SimulationCell& cell,
+        LatticeStructureType crystalType = LATTICE_OTHER,
+        ParticleProperty* selection = nullptr,
+        ParticleProperty* outputStructures = nullptr,
+        std::vector<Matrix3>&& preferredOrientations = {}
+    );
+
+    virtual ~StructureContext() = default;
+
+    size_t atomCount() const{
+        return positions->size();
+    }
+};
+
+class AnalysisContext : public StructureContext{
+public:
+    struct ExportedContext{
+        std::vector<LammpsParser::ExtraHeader> headers;
+        std::vector<LammpsParser::ExtraColumn> columns;
+        std::vector<std::shared_ptr<ParticleProperty>> ownedProperties;
+    };
+
+    ExportedContext exportContext(const StructureAnalysis* analysis = nullptr) const;
+    bool writeDumpWithContext(
+        const LammpsParser::Frame& frame,
+        const std::string& outputFilename,
+        const StructureAnalysis* analysis = nullptr
+    ) const;
 
     AnalysisContext(
         ParticleProperty* pos,
@@ -40,10 +69,6 @@ public:
         ParticleProperty* outputStructures,
         std::vector<Matrix3>&& preferredOrientations
     );
-        
-    size_t atomCount() const{
-        return positions->size(); 
-    }
 };
 
 }

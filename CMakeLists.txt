@@ -57,6 +57,7 @@ set(LIBRARY_SOURCES
 	${CMAKE_SOURCE_DIR}/src/analysis/analysis_dump_utils.cpp
 	${CMAKE_SOURCE_DIR}/src/analysis/cluster_graph_export.cpp
 	${CMAKE_SOURCE_DIR}/src/analysis/cluster_builder.cpp
+	${CMAKE_SOURCE_DIR}/src/analysis/shared_crystal_topology.cpp
 	${CMAKE_SOURCE_DIR}/src/analysis/structure_analysis.cpp
 	${CMAKE_SOURCE_DIR}/src/core/reconstructed_structure.cpp
 	${CMAKE_SOURCE_DIR}/src/structures/cluster_graph.cpp

@@ -57,6 +57,26 @@ std::shared_ptr<ParticleProperty> makeNeighborIndicesProperty(const AnalysisCont
     return property;
 }
 
+std::shared_ptr<ParticleProperty> makeExportedNeighborCountsProperty(const AnalysisContext& context){
+    auto property = std::make_shared<ParticleProperty>(
+        context.atomCount(),
+        DataType::Int,
+        1,
+        0,
+        true
+    );
+
+    if(!context.neighborCounts){
+        return property;
+    }
+
+    for(std::size_t atomIndex = 0; atomIndex < context.atomCount(); ++atomIndex){
+        property->setInt(atomIndex, context.neighborCounts->getInt(static_cast<int>(atomIndex)));
+    }
+
+    return property;
+}
+
 std::string formatDouble(double value){
     std::ostringstream stream;
     stream << std::setprecision(std::numeric_limits<double>::max_digits10) << value;
@@ -153,7 +173,13 @@ AnalysisContext::AnalysisContext(
     }
     const size_t numAtoms = atomCount();
     atomClusters = std::make_shared<ParticleProperty>(numAtoms, DataType::Int, 1, 0, true);
-    atomSymmetryPermutations = std::make_shared<ParticleProperty>(numAtoms, DataType::Int, 1, 0, false);
+    atomAllowedSymmetryMasks = std::make_shared<ParticleProperty>(numAtoms, DataType::Int64, 1, 0, true);
+    atomSymmetryPermutations = std::make_shared<ParticleProperty>(numAtoms, DataType::Int, 1, 0, true);
+    std::fill(
+        atomSymmetryPermutations->dataInt(),
+        atomSymmetryPermutations->dataInt() + numAtoms,
+        -1
+    );
 
     if(numAtoms > 0){
         std::fill(
@@ -178,8 +204,15 @@ AnalysisContext::ExportedContext AnalysisContext::exportContext(const StructureA
         }
         LammpsParser::writeColumn(columns, { name }, exportedProperty);
     };
+    std::shared_ptr<ParticleProperty> exportedStructureTypes;
+    if(structureTypes){
+        exportedStructureTypes = std::shared_ptr<ParticleProperty>(structureTypes, [](ParticleProperty*){});
+    }
+    writeIntColumn("structure_type", exportedStructureTypes, LATTICE_OTHER);
     writeIntColumn("cluster_id", atomClusters, 0);
-    writeIntColumn("neighbor_counts", neighborCounts, 0);
+    auto exportedNeighborCounts = makeExportedNeighborCountsProperty(*this);
+    ownedProperties.push_back(exportedNeighborCounts);
+    LammpsParser::writeColumn(columns, { "neighbor_counts" }, exportedNeighborCounts);
 
     auto neighborIndicesProperty = makeNeighborIndicesProperty(*this);
     ownedProperties.push_back(neighborIndicesProperty);

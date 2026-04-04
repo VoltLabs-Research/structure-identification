@@ -33,11 +33,7 @@ public:
 	virtual const Vector3& latticeVector(int structureType, int latticeVectorIndex) const = 0;
 };
 
-struct PTMComputationData{
-	std::shared_ptr<ParticleProperty> rmsd;
-	std::shared_ptr<ParticleProperty> orientations;
-	std::shared_ptr<ParticleProperty> correspondences;
-};
+class ClusterRuleProvider;
 
 class StructureAnalysis{
 public:
@@ -73,15 +69,11 @@ public:
 		return *_clusterGraph;
 	}
 
-	// PTM
-	void computeMaximumNeighborDistanceFromPTM();
-	PTMComputationData determineLocalStructuresWithPTM(double rmsdCutoff);
-
 	Cluster* atomCluster(int atomIndex) const{
 		return clusterGraph().findCluster(_context.atomClusters->getInt(atomIndex));
 	}
 	
-	int findClosestSymmetryPermutation(int structureType, const Matrix3& rotation);
+	int findClosestSymmetryPermutation(int structureType, const Matrix3& rotation) const;
 	int coordinationNumber(int structureType) const;
 	int commonNeighborIndex(int structureType, int neighborIndex, int commonNeighborSlot) const;
 	int symmetryPermutationCount(int structureType) const;
@@ -89,14 +81,16 @@ public:
 	const Matrix3& symmetryTransformation(int structureType, int symmetryIndex) const;
 	int symmetryInverseProduct(int structureType, int symmetryIndex, int transformationIndex) const;
 
-	void identifyStructuresCNA();
-
 	const Vector3& latticeVector(int structureType, int latticeVectorIndex) const;
 
 	// Returns the ideal lattice vector associated with a neighbor bond
 	const Vector3& neighborLatticeVector(int centralAtomIndex, int neighborIndex) const;
 
 	void setNeighborLatticeVectorOverrides(std::vector<Vector3> overrides, std::size_t stride);
+	void setClusterRuleProvider(std::shared_ptr<const ClusterRuleProvider> clusterRuleProvider);
+	const ClusterRuleProvider* clusterRuleProvider() const{
+		return _clusterRuleProvider.get();
+	}
 	void setCrystalInfoProvider(std::shared_ptr<const StructureAnalysisCrystalInfo> crystalInfoProvider);
 	bool hasCrystalInfoProvider() const{
 		return static_cast<bool>(_crystalInfoProvider);
@@ -117,6 +111,7 @@ private:
 
 	StructureContext& _context;
 	std::shared_ptr<ClusterGraph> _clusterGraph; 
+	std::shared_ptr<const ClusterRuleProvider> _clusterRuleProvider;
 	std::shared_ptr<const StructureAnalysisCrystalInfo> _crystalInfoProvider;
 	std::vector<Vector3> _neighborLatticeVectorOverrides;
 	std::size_t _neighborLatticeVectorOverrideStride = 0;

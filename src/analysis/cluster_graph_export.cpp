@@ -20,6 +20,7 @@ constexpr const char* kClusterTransitionsSuffix = "_cluster_transitions.table";
 struct ClusterRow{
     int clusterId = 0;
     int structureType = 0;
+    Matrix3 orientation = Matrix3::Identity();
 };
 
 struct TransitionRow{
@@ -241,6 +242,22 @@ bool loadClustersTable(
         return false;
     }
 
+    std::array<std::size_t, 9> orientationIndices{};
+    bool hasOrientationColumns = true;
+    for(int row = 0; row < 3; ++row){
+        for(int column = 0; column < 3; ++column){
+            auto it = indices.find("orientation_" + std::to_string(row) + std::to_string(column));
+            if(it == indices.end()){
+                hasOrientationColumns = false;
+                break;
+            }
+            orientationIndices[static_cast<std::size_t>(row * 3 + column)] = it->second;
+        }
+        if(!hasOrientationColumns){
+            break;
+        }
+    }
+
     rows.clear();
     rows.reserve(rawRows.size());
     for(const auto& rawRow : rawRows){
@@ -250,6 +267,23 @@ bool loadClustersTable(
             AnalysisDumpUtils::setError(errorMessage, "Failed to parse integral values in clusters table");
             return false;
         }
+
+        if(hasOrientationColumns){
+            for(int row = 0; row < 3; ++row){
+                for(int column = 0; column < 3; ++column){
+                    double value = 0.0;
+                    if(!AnalysisDumpUtils::tryParseDouble(
+                        rawRow[orientationIndices[static_cast<std::size_t>(row * 3 + column)]],
+                        value
+                    )){
+                        AnalysisDumpUtils::setError(errorMessage, "Failed to parse cluster orientation matrix");
+                        return false;
+                    }
+                    rowData.orientation(row, column) = value;
+                }
+            }
+        }
+
         rows.push_back(rowData);
     }
 
@@ -350,6 +384,7 @@ bool rebuildClusterGraph(
         }
 
         Cluster* cluster = graph.createCluster(row.structureType, row.clusterId);
+        cluster->orientation = row.orientation;
         cluster->predecessor = nullptr;
         cluster->parentTransition = nullptr;
         cluster->rank = 0;
@@ -400,12 +435,20 @@ bool writeClustersTable(
     }
 
     output << std::setprecision(std::numeric_limits<double>::max_digits10);
-    output << "cluster_id\tstructure_type\n";
+    output << "cluster_id\tstructure_type";
+    for(int row = 0; row < 3; ++row){
+        for(int column = 0; column < 3; ++column){
+            output << "\torientation_" << row << column;
+        }
+    }
+    output << '\n';
 
     for(Cluster* cluster : sortedClusters(clusterGraph)){
         output
             << cluster->id
-            << '\t' << cluster->structure
+            << '\t' << cluster->structure;
+        writeMatrixColumns(output, cluster->orientation);
+        output
             << '\n';
     }
 

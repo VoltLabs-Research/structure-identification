@@ -24,6 +24,7 @@ public:
     std::shared_ptr<ParticleProperty> neighborIndices;
     std::shared_ptr<ParticleProperty> neighborCounts;
     std::shared_ptr<ParticleProperty> atomClusters;
+    std::shared_ptr<ParticleProperty> atomAllowedSymmetryMasks;
     std::shared_ptr<ParticleProperty> atomSymmetryPermutations;
 
     const SimulationCell& simCell;

@@ -51,10 +51,18 @@ StructureAnalysis::StructureAnalysis(
     if(!_context.neighborCounts){
         _context.neighborCounts = std::make_shared<ParticleProperty>(_context.atomCount(), DataType::Int, 1, 0, true);
     }
+    if(!_context.atomAllowedSymmetryMasks){
+        _context.atomAllowedSymmetryMasks = std::make_shared<ParticleProperty>(_context.atomCount(), DataType::Int64, 1, 0, true);
+    }
 
     if(_context.structureTypes){
         if(!_context.atomSymmetryPermutations){
             _context.atomSymmetryPermutations = std::make_shared<ParticleProperty>(_context.atomCount(), DataType::Int, 1, 0, true);
+            std::fill(
+                _context.atomSymmetryPermutations->dataInt(),
+                _context.atomSymmetryPermutations->dataInt() + _context.atomSymmetryPermutations->size(),
+                -1
+            );
         }
         std::fill(_context.structureTypes->dataInt(), _context.structureTypes->dataInt() + _context.structureTypes->size(), LATTICE_OTHER);
     }
@@ -191,6 +199,12 @@ void StructureAnalysis::setNeighborLatticeVectorOverrides(
     _neighborLatticeVectorOverrideStride = stride;
 }
 
+void StructureAnalysis::setClusterRuleProvider(
+    std::shared_ptr<const ClusterRuleProvider> clusterRuleProvider
+){
+    _clusterRuleProvider = std::move(clusterRuleProvider);
+}
+
 void StructureAnalysis::setCrystalInfoProvider(
     std::shared_ptr<const StructureAnalysisCrystalInfo> crystalInfoProvider
 ){
@@ -205,7 +219,7 @@ const AnalysisContext& StructureAnalysis::analysisContext() const{
     return requireAnalysisContext(_context);
 }
 
-int StructureAnalysis::findClosestSymmetryPermutation(int structureType, const Matrix3& rotation){
+int StructureAnalysis::findClosestSymmetryPermutation(int structureType, const Matrix3& rotation) const{
     return requireCrystalInfo(_crystalInfoProvider).findClosestSymmetryPermutation(structureType, rotation);
 }
 

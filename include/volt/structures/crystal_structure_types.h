@@ -62,8 +62,8 @@ enum LatticeStructureType{
     NUM_LATTICE_TYPES
 };
 
-// Maximum number of nearest neighbors supported by CNA.
-// this limit defines buffer sizes for neighbor lists and common-neighbor mask.
+// Maximum number of nearest neighbors supported by reconstructed analyses.
+// Diamond-type structures require 16 slots to carry the 4 first-shell and 12 second-shell neighbors.
 enum { MAX_NEIGHBORS = 16 };
 
 // Bitmask type representing a bond between two common neighbors.

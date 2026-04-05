@@ -1,5 +1,5 @@
 #include <volt/core/reconstructed_structure.h>
-#include <volt/analysis/analysis_dump_utils.h>
+#include <volt/analysis/reconstructed_dump_utils.h>
 
 #include <algorithm>
 #include <array>

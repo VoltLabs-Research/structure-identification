@@ -1,7 +1,7 @@
 #pragma once
 
 #include <volt/analysis/structure_analysis.h>
-#include <volt/analysis/symmetry_utils.h>
+#include <volt/analysis/crystal_symmetry_utils.h>
 
 #include <algorithm>
 #include <cstddef>

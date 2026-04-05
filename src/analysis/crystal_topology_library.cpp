@@ -1,5 +1,5 @@
-#include <volt/analysis/shared_crystal_topology.h>
-#include <volt/analysis/symmetry_utils.h>
+#include <volt/analysis/crystal_topology_library.h>
+#include <volt/analysis/crystal_symmetry_utils.h>
 
 #include <volt/structures/lattice_vectors.h>
 

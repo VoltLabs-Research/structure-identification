@@ -53,11 +53,11 @@ else()
 endif()
 
 set(LIBRARY_SOURCES
-	${CMAKE_SOURCE_DIR}/src/analysis/analysis_context.cpp
-	${CMAKE_SOURCE_DIR}/src/analysis/analysis_dump_utils.cpp
-	${CMAKE_SOURCE_DIR}/src/analysis/cluster_graph_export.cpp
-	${CMAKE_SOURCE_DIR}/src/analysis/cluster_builder.cpp
-	${CMAKE_SOURCE_DIR}/src/analysis/shared_crystal_topology.cpp
+	${CMAKE_SOURCE_DIR}/src/analysis/structure_analysis_context.cpp
+	${CMAKE_SOURCE_DIR}/src/analysis/reconstructed_dump_utils.cpp
+	${CMAKE_SOURCE_DIR}/src/analysis/cluster_graph_io.cpp
+	${CMAKE_SOURCE_DIR}/src/analysis/cluster_graph_builder.cpp
+	${CMAKE_SOURCE_DIR}/src/analysis/crystal_topology_library.cpp
 	${CMAKE_SOURCE_DIR}/src/analysis/structure_analysis.cpp
 	${CMAKE_SOURCE_DIR}/src/core/reconstructed_structure.cpp
 	${CMAKE_SOURCE_DIR}/src/structures/cluster_graph.cpp

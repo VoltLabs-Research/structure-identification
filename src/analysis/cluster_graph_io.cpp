@@ -1,6 +1,6 @@
-#include <volt/analysis/cluster_graph_export.h>
-#include <volt/analysis/analysis_dump_utils.h>
-#include <volt/analysis/cluster_hierarchy_utils.h>
+#include <volt/analysis/cluster_graph_io.h>
+#include <volt/analysis/reconstructed_dump_utils.h>
+#include <volt/analysis/cluster_hierarchy_rebuilder.h>
 
 #include <algorithm>
 #include <fstream>

@@ -2,8 +2,8 @@
 
 #include <string>
 
-#include <volt/analysis/analysis_context.h>
-#include <volt/analysis/cluster_graph_export.h>
+#include <volt/analysis/structure_analysis_context.h>
+#include <volt/analysis/cluster_graph_io.h>
 #include <volt/analysis/structure_analysis.h>
 #include <volt/core/lammps_parser.h>
 

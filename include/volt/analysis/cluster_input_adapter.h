@@ -1,6 +1,6 @@
 #pragma once
 
-#include <volt/analysis/analysis_context.h>
+#include <volt/analysis/structure_analysis_context.h>
 #include <volt/analysis/structure_analysis.h>
 
 namespace Volt{

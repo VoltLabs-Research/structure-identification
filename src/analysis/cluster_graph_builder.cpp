@@ -1,5 +1,5 @@
-#include <volt/analysis/cluster_builder.h>
-#include <volt/analysis/cluster_hierarchy_utils.h>
+#include <volt/analysis/cluster_graph_builder.h>
+#include <volt/analysis/cluster_hierarchy_rebuilder.h>
 #include <volt/analysis/cluster_rule_provider.h>
 
 #include <spdlog/spdlog.h>

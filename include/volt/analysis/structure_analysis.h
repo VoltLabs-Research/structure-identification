@@ -5,7 +5,7 @@
 #include <volt/core/simulation_cell.h>
 #include <volt/structures/cluster_graph.h>
 #include <volt/structures/crystal_structure_types.h>
-#include <volt/analysis/analysis_context.h>
+#include <volt/analysis/structure_analysis_context.h>
 #include <volt/core/lammps_parser.h>
 
 #include <algorithm>

@@ -1,5 +1,5 @@
-#include <volt/analysis/analysis_context.h>
-#include <volt/analysis/analysis_dump_utils.h>
+#include <volt/analysis/structure_analysis_context.h>
+#include <volt/analysis/reconstructed_dump_utils.h>
 #include <volt/analysis/structure_analysis.h>
 #include <volt/structures/crystal_structure_types.h>
 

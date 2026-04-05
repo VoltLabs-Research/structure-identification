@@ -6,7 +6,7 @@
 
 namespace Volt {
 
-namespace{
+namespace StructureAnalysisDetail{
 
 const StructureAnalysisCrystalInfo& requireCrystalInfo(
     const std::shared_ptr<const StructureAnalysisCrystalInfo>& crystalInfoProvider
@@ -34,6 +34,8 @@ const AnalysisContext& requireAnalysisContext(const StructureContext& context){
 }
 
 }
+
+using namespace StructureAnalysisDetail;
 
 StructureAnalysis::StructureAnalysis(
     StructureContext& context

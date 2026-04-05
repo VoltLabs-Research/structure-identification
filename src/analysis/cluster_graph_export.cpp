@@ -12,7 +12,7 @@
 
 namespace Volt{
 
-namespace{
+namespace ClusterGraphExportDetail{
 
 constexpr const char* kClustersSuffix = "_clusters.table";
 constexpr const char* kClusterTransitionsSuffix = "_cluster_transitions.table";
@@ -490,6 +490,8 @@ bool writeClusterTransitionsTable(
 }
 
 }
+
+using namespace ClusterGraphExportDetail;
 
 bool exportClusterGraph(
     ClusterGraph& clusterGraph,

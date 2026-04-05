@@ -12,7 +12,7 @@
 
 namespace Volt{
 
-namespace{
+namespace AnalysisContextDetail{
 
 std::shared_ptr<ParticleProperty> makeNeighborIndicesProperty(const AnalysisContext& context){
     const std::size_t atomCount = context.atomCount();
@@ -150,6 +150,8 @@ StructureContext::StructureContext(
         throw std::invalid_argument("Invalid positions");
     }
 }
+
+using namespace AnalysisContextDetail;
 
 AnalysisContext::AnalysisContext(
     ParticleProperty* pos,

@@ -13,7 +13,7 @@
 
 namespace Volt{
 
-namespace{
+namespace SharedCrystalTopologyDetail{
 
 template<typename Iterator>
 void bitmapSort(Iterator begin, Iterator end, int maxValue){
@@ -442,6 +442,8 @@ const SharedCrystalTopology& initializeSharedTopology(int normalizedStructureTyp
 }
 
 }
+
+using namespace SharedCrystalTopologyDetail;
 
 const SharedCrystalTopology* sharedCrystalTopology(int structureType){
     const int normalized = normalizeSharedStructureType(structureType);

@@ -11,7 +11,7 @@
 
 namespace Volt{
 
-namespace{
+namespace ClusterBuilderDetail{
 
 constexpr bool symmetryAllowed(std::uint64_t mask, int symmetryIndex){
     return symmetryIndex >= 0
@@ -20,6 +20,8 @@ constexpr bool symmetryAllowed(std::uint64_t mask, int symmetryIndex){
 }
 
 }
+
+using namespace ClusterBuilderDetail;
 
 ClusterBuilder::ClusterBuilder(
     StructureAnalysis& sa,

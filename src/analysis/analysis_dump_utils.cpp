@@ -7,7 +7,7 @@
 
 namespace Volt::AnalysisDumpUtils{
 
-namespace{
+namespace Detail{
 
 template<typename IntType>
 bool convertIntegral(double input, IntType& output){
@@ -31,6 +31,8 @@ bool convertIntegral(double input, IntType& output){
 }
 
 }
+
+using namespace Detail;
 
 std::string neighborIndexName(int slot){
     return "neighbor_indices_" + std::to_string(slot);

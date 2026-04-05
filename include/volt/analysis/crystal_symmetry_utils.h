@@ -121,13 +121,14 @@ void generateSymmetryPermutations(
 
     using SymmetryType = typename SymmetryContainer::value_type;
 
+    SymmetryType symmetry{};
+
     do{
         int changedFrom = static_cast<int>(
             std::mismatch(permutation.begin(), permutation.end(), lastPermutation.begin()).first - permutation.begin()
         );
         std::copy(permutation.begin(), permutation.end(), lastPermutation.begin());
 
-        SymmetryType symmetry{};
         if(changedFrom <= basisIndices[2]){
             Matrix3 transformedBasis = Matrix3::Zero();
             transformedBasis.column(0) = latticeVectors[static_cast<std::size_t>(permutation[static_cast<std::size_t>(basisIndices[0])])];
@@ -168,7 +169,7 @@ void generateSymmetryPermutations(
             }
 
             if(!duplicate){
-                symmetries.push_back(std::move(symmetry));
+                symmetries.push_back(symmetry);
             }
         }else{
             sortFrom = invalidFrom;

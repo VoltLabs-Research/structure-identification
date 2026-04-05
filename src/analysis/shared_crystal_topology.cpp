@@ -1,4 +1,5 @@
 #include <volt/analysis/shared_crystal_topology.h>
+#include <volt/analysis/symmetry_utils.h>
 
 #include <volt/structures/lattice_vectors.h>
 
@@ -15,21 +16,6 @@ namespace Volt{
 
 namespace SharedCrystalTopologyDetail{
 
-template<typename Iterator>
-void bitmapSort(Iterator begin, Iterator end, int maxValue){
-    std::uint64_t bitArray = 0;
-    for(Iterator it = begin; it != end; ++it){
-        bitArray |= std::uint64_t{1} << (*it);
-    }
-
-    Iterator output = begin;
-    for(int value = maxValue - 1; value >= 0; --value){
-        if(bitArray & (std::uint64_t{1} << value)){
-            *output++ = value;
-        }
-    }
-}
-
 int normalizeSharedStructureType(int structureType){
     switch(static_cast<StructureType>(structureType)){
         case StructureType::CUBIC_DIAMOND:
@@ -43,40 +29,6 @@ int normalizeSharedStructureType(int structureType){
         default:
             return structureType;
     }
-}
-
-std::vector<Matrix3> generateCubicSymmetryRotations(){
-    std::vector<Matrix3> rotations;
-    const std::array<std::array<int, 3>, 6> permutations = {{
-        {0, 1, 2}, {0, 2, 1}, {1, 0, 2}, {1, 2, 0}, {2, 0, 1}, {2, 1, 0}
-    }};
-    const int signs[8][3] = {
-        { 1,  1,  1},
-        { 1, -1, -1},
-        {-1,  1, -1},
-        {-1, -1,  1},
-        { 1,  1, -1},
-        { 1, -1,  1},
-        {-1,  1,  1},
-        {-1, -1, -1}
-    };
-
-    for(const auto& permutation : permutations){
-        for(const auto& sign : signs){
-            Matrix3 rotation;
-            for(int axis = 0; axis < 3; ++axis){
-                Vector3 column(0, 0, 0);
-                column[permutation[axis]] = double(sign[axis]);
-                rotation.column(axis) = column;
-            }
-
-            if(std::abs(rotation.determinant() - 1.0) < 1e-8){
-                rotations.push_back(rotation);
-            }
-        }
-    }
-
-    return rotations;
 }
 
 void initializePrimitiveCell(
@@ -177,102 +129,17 @@ void findCommonNeighborsForBond(SharedCrystalTopology& topology, int neighborInd
     }
 }
 
-void findNonCoplanarVectors(const SharedCrystalTopology& topology, int indices[3], Matrix3& basis){
-    int found = 0;
-    for(int vectorIndex = 0; vectorIndex < topology.coordinationNumber && found < 3; ++vectorIndex){
-        basis.column(found) = topology.latticeVectors[static_cast<std::size_t>(vectorIndex)];
-
-        if(found == 1){
-            if(basis.column(0).cross(basis.column(1)).squaredLength() <= EPSILON){
-                continue;
-            }
-        }else if(found == 2){
-            if(std::abs(basis.determinant()) <= EPSILON){
-                continue;
-            }
-        }
-
-        indices[found++] = vectorIndex;
-    }
-
-    if(found != 3){
-        throw std::runtime_error("Unable to determine a non-coplanar basis for shared crystal topology.");
-    }
-}
-
 void generateGenericSymmetryPermutations(SharedCrystalTopology& topology){
-    if(topology.coordinationNumber == 0 || topology.latticeVectors.empty()){
-        return;
-    }
-
-    int basisIndices[3] = {-1, -1, -1};
-    Matrix3 basis = Matrix3::Zero();
-    findNonCoplanarVectors(topology, basisIndices, basis);
-    const Matrix3 basisInverse = basis.inverse();
-
-    std::vector<int> permutation(topology.latticeVectors.size());
-    std::iota(permutation.begin(), permutation.end(), 0);
-    std::vector<int> lastPermutation(topology.latticeVectors.size(), -1);
-    SharedCrystalSymmetryPermutation symmetry;
-
-    do{
-        int changedFrom = static_cast<int>(
-            std::mismatch(permutation.begin(), permutation.end(), lastPermutation.begin()).first - permutation.begin()
-        );
-        std::copy(permutation.begin(), permutation.end(), lastPermutation.begin());
-
-        if(changedFrom <= basisIndices[2]){
-            Matrix3 transformedBasis = Matrix3::Zero();
-            transformedBasis.column(0) = topology.latticeVectors[static_cast<std::size_t>(permutation[static_cast<std::size_t>(basisIndices[0])])];
-            transformedBasis.column(1) = topology.latticeVectors[static_cast<std::size_t>(permutation[static_cast<std::size_t>(basisIndices[1])])];
-            transformedBasis.column(2) = topology.latticeVectors[static_cast<std::size_t>(permutation[static_cast<std::size_t>(basisIndices[2])])];
-            symmetry.transformation = transformedBasis * basisInverse;
-
-            if(!symmetry.transformation.isOrthogonalMatrix()){
-                bitmapSort(permutation.begin() + basisIndices[2] + 1, permutation.end(), static_cast<int>(permutation.size()));
-                continue;
-            }
-            changedFrom = 0;
-        }
-
-        int sortFrom = basisIndices[2];
-        int invalidFrom = changedFrom;
-        for(; invalidFrom < topology.coordinationNumber; ++invalidFrom){
-            const Vector3 transformedVector = symmetry.transformation * topology.latticeVectors[static_cast<std::size_t>(invalidFrom)];
-            if(!transformedVector.equals(topology.latticeVectors[static_cast<std::size_t>(permutation[static_cast<std::size_t>(invalidFrom)])])){
-                break;
-            }
-        }
-
-        if(invalidFrom == topology.coordinationNumber){
-            symmetry.permutation.fill(-1);
-            std::copy(
-                permutation.begin(),
-                permutation.begin() + topology.coordinationNumber,
-                symmetry.permutation.begin()
-            );
-
-            bool duplicate = false;
-            for(const auto& existing : topology.symmetries){
-                if(existing.transformation.equals(symmetry.transformation)){
-                    duplicate = true;
-                    break;
-                }
-            }
-
-            if(!duplicate){
-                topology.symmetries.push_back(std::move(symmetry));
-            }
-        }else{
-            sortFrom = invalidFrom;
-        }
-
-        bitmapSort(permutation.begin() + sortFrom + 1, permutation.end(), static_cast<int>(permutation.size()));
-    }while(std::next_permutation(permutation.begin(), permutation.end()));
+    AnalysisSymmetryUtils::generateSymmetryPermutations(
+        topology.latticeVectors,
+        topology.coordinationNumber,
+        topology.latticeVectors,
+        topology.symmetries
+    );
 }
 
 void initializeSimpleCubicSymmetries(SharedCrystalTopology& topology){
-    for(const Matrix3& rotation : generateCubicSymmetryRotations()){
+    for(const Matrix3& rotation : AnalysisSymmetryUtils::cubicSymmetryRotations()){
         SharedCrystalSymmetryPermutation symmetry;
         symmetry.transformation = rotation;
         symmetry.permutation.fill(-1);
@@ -292,23 +159,7 @@ void initializeSimpleCubicSymmetries(SharedCrystalTopology& topology){
 }
 
 void calculateSymmetryProducts(SharedCrystalTopology& topology){
-    for(std::size_t s1 = 0; s1 < topology.symmetries.size(); ++s1){
-        topology.symmetries[s1].inverseProduct.reserve(topology.symmetries.size());
-        for(std::size_t s2 = 0; s2 < topology.symmetries.size(); ++s2){
-            const Matrix3 inverseProduct =
-                topology.symmetries[s2].transformation.inverse() *
-                topology.symmetries[s1].transformation;
-
-            int matchIndex = 0;
-            for(std::size_t candidate = 0; candidate < topology.symmetries.size(); ++candidate){
-                if(topology.symmetries[candidate].transformation.equals(inverseProduct)){
-                    matchIndex = static_cast<int>(candidate);
-                    break;
-                }
-            }
-            topology.symmetries[s1].inverseProduct.push_back(matchIndex);
-        }
-    }
+    AnalysisSymmetryUtils::calculateSymmetryProducts(topology.symmetries);
 }
 
 template<typename BondPredicate>
@@ -464,25 +315,7 @@ int findClosestSharedCrystalSymmetryPermutation(
     const SharedCrystalTopology& topology,
     const Matrix3& rotation
 ){
-    int bestIndex = 0;
-    double bestDeviation = std::numeric_limits<double>::max();
-
-    for(int symmetryIndex = 0; symmetryIndex < static_cast<int>(topology.symmetries.size()); ++symmetryIndex){
-        const Matrix3& symmetry = topology.symmetries[static_cast<std::size_t>(symmetryIndex)].transformation;
-        double deviation = 0.0;
-        for(int row = 0; row < 3; ++row){
-            for(int column = 0; column < 3; ++column){
-                const double diff = rotation(row, column) - symmetry(row, column);
-                deviation += diff * diff;
-            }
-        }
-        if(deviation < bestDeviation){
-            bestDeviation = deviation;
-            bestIndex = symmetryIndex;
-        }
-    }
-
-    return bestIndex;
+    return AnalysisSymmetryUtils::findClosestSymmetryPermutation(topology.symmetries, rotation);
 }
 
 bool adaptSharedCrystalTopology(
@@ -570,24 +403,7 @@ bool adaptSharedCrystalTopology(
         outTopology.symmetries.push_back(std::move(adaptedSymmetry));
     }
 
-    for(std::size_t s1 = 0; s1 < outTopology.symmetries.size(); ++s1){
-        outTopology.symmetries[s1].inverseProduct.clear();
-        outTopology.symmetries[s1].inverseProduct.reserve(outTopology.symmetries.size());
-        for(std::size_t s2 = 0; s2 < outTopology.symmetries.size(); ++s2){
-            const Matrix3 inverseProduct =
-                outTopology.symmetries[s2].transformation.inverse() *
-                outTopology.symmetries[s1].transformation;
-
-            int matchIndex = 0;
-            for(std::size_t candidate = 0; candidate < outTopology.symmetries.size(); ++candidate){
-                if(outTopology.symmetries[candidate].transformation.equals(inverseProduct)){
-                    matchIndex = static_cast<int>(candidate);
-                    break;
-                }
-            }
-            outTopology.symmetries[s1].inverseProduct.push_back(matchIndex);
-        }
-    }
+    AnalysisSymmetryUtils::calculateSymmetryProducts(outTopology.symmetries);
 
     return true;
 }

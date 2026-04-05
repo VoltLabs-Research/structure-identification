@@ -1,4 +1,5 @@
 #include <volt/analysis/cluster_builder.h>
+#include <volt/analysis/cluster_hierarchy_utils.h>
 #include <volt/analysis/cluster_rule_provider.h>
 
 #include <spdlog/spdlog.h>
@@ -529,48 +530,13 @@ void ClusterBuilder::formSuperClusters(){
     }
 
     const size_t newTransitionCount = _sa.clusterGraph().clusterTransitions().size();
-
-    for(size_t i = oldTransitionCount; i < newTransitionCount; i++){
-        ClusterTransition* transition = _sa.clusterGraph().clusterTransitions()[i];
-
-        Cluster* parent1 = getParentGrain(transition->cluster1);
-        Cluster* parent2 = getParentGrain(transition->cluster2);
-
-        if(parent1 == parent2){
-            continue;
-        }
-
-        ClusterTransition* parentTransition = transition;
-
-        if(parent2 != transition->cluster2){
-            parentTransition = _sa.clusterGraph().concatenateClusterTransitions(
-                parentTransition,
-                transition->cluster2->parentTransition
-            );
-        }
-
-        if(parent1 != transition->cluster1){
-            parentTransition = _sa.clusterGraph().concatenateClusterTransitions(
-                transition->cluster1->parentTransition->reverse,
-                parentTransition
-            );
-        }
-
-        if(parent1->rank > parent2->rank){
-            parent2->parentTransition = parentTransition->reverse;
-            continue;
-        }
-
-        parent1->parentTransition = parentTransition;
-
-        if(parent1->rank == parent2->rank){
-            parent2->rank++;
-        }
+    std::vector<ClusterTransition*> superClusterTransitions;
+    superClusterTransitions.reserve(newTransitionCount - oldTransitionCount);
+    for(size_t i = oldTransitionCount; i < newTransitionCount; ++i){
+        superClusterTransitions.push_back(_sa.clusterGraph().clusterTransitions()[i]);
     }
 
-    for(Cluster* cluster : _sa.clusterGraph().clusters()){
-        getParentGrain(cluster);
-    }
+    ClusterHierarchyUtils::rebuildParentHierarchy(_sa, superClusterTransitions);
 }
 
 Cluster* ClusterBuilder::startNew(int atomIndex, int structureType){
@@ -583,20 +549,7 @@ Cluster* ClusterBuilder::startNew(int atomIndex, int structureType){
 }
 
 Cluster* ClusterBuilder::getParentGrain(Cluster* cluster){
-    if(!cluster->parentTransition){
-        return cluster;
-    }
-
-    ClusterTransition* parentTransition = cluster->parentTransition;
-    Cluster* parent = parentTransition->cluster2;
-
-    while(parent->parentTransition){
-        parentTransition = _sa.clusterGraph().concatenateClusterTransitions(parentTransition, parent->parentTransition);
-        parent = parent->parentTransition->cluster2;
-    }
-
-    cluster->parentTransition = parentTransition;
-    return parent;
+    return ClusterHierarchyUtils::getParentGrain(_sa, cluster);
 }
 
 }

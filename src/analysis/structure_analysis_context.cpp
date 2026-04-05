@@ -250,12 +250,13 @@ bool AnalysisContext::writeDumpWithContext(
         atomIds = &generatedAtomIds;
     }
 
-    return parser.writeFileWithExtraColumns(
+    return parser.writeFileMergedWithExtraColumns(
         outputFilename,
         frame,
         *atomIds,
         exported.columns,
-        exported.headers
+        exported.headers,
+        true
     );
 }
 

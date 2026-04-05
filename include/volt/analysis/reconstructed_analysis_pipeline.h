@@ -55,21 +55,22 @@ inline std::unique_ptr<PreparedAnalysisSession> prepareAnalysisSession(
 inline bool appendClusterOutputs(
     const LammpsParser::Frame& frame,
     const std::string& outputBase,
+    const std::string& inputDumpPath,
     const AnalysisContext& context,
     StructureAnalysis& analysis,
     nlohmann::json& result,
     std::string* errorMessage
 ){
-    if(outputBase.empty()){
-        return true;
-    }
-
-    const std::string dumpPath = outputBase + "_annotated.dump";
-    if(!context.writeDumpWithContext(frame, dumpPath, &analysis)){
+    if(!context.writeDumpWithContext(frame, inputDumpPath, &analysis)){
         if(errorMessage){
-            *errorMessage = "Failed to write " + dumpPath;
+            *errorMessage = "Failed to write " + inputDumpPath;
         }
         return false;
+    }
+    result["input_dump"] = inputDumpPath;
+
+    if(outputBase.empty()){
+        return true;
     }
 
     ClusterGraphExportPaths clusterGraphPaths;
@@ -80,7 +81,6 @@ inline bool appendClusterOutputs(
         return false;
     }
 
-    result["annotated_dump"] = dumpPath;
     result["clusters_table"] = clusterGraphPaths.clustersTablePath;
     result["cluster_transitions_table"] = clusterGraphPaths.clusterTransitionsTablePath;
     return true;

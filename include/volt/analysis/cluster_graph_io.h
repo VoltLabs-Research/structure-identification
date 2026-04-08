@@ -12,8 +12,14 @@ struct ClusterGraphExportPaths{
     std::string clusterTransitionsTablePath;
 };
 
+void normalizeReconstructedClusterGraphForExport(
+    StructureAnalysis& structureAnalysis,
+    AnalysisContext& context
+);
+
 bool exportClusterGraph(
-    ClusterGraph& clusterGraph,
+    StructureAnalysis& structureAnalysis,
+    const AnalysisContext& context,
     const std::string& outputBase,
     ClusterGraphExportPaths* paths = nullptr
 );

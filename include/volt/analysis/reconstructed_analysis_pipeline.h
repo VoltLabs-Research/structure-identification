@@ -74,7 +74,7 @@ inline bool appendClusterOutputs(
     }
 
     ClusterGraphExportPaths clusterGraphPaths;
-    if(!exportClusterGraph(analysis.clusterGraph(), outputBase, &clusterGraphPaths)){
+    if(!exportClusterGraph(analysis, context, outputBase, &clusterGraphPaths)){
         if(errorMessage){
             *errorMessage = "Failed to export cluster graph tables";
         }

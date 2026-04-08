@@ -1,6 +1,7 @@
 #include <volt/analysis/cluster_graph_io.h>
-#include <volt/analysis/reconstructed_dump_utils.h>
 #include <volt/analysis/cluster_hierarchy_rebuilder.h>
+#include <volt/analysis/reconstructed_dump_utils.h>
+#include <volt/structures/crystal_topology_registry.h>
 
 #include <algorithm>
 #include <fstream>
@@ -21,6 +22,7 @@ constexpr const char* kClusterTransitionsSuffix = "_cluster_transitions.table";
 struct ClusterRow{
     int clusterId = 0;
     int structureType = 0;
+    std::string topologyName;
     Matrix3 orientation = Matrix3::Identity();
 };
 
@@ -56,11 +58,32 @@ std::vector<Cluster*> sortedClusters(const ClusterGraph& clusterGraph){
     return clusters;
 }
 
-std::vector<ClusterTransition*> collectDirectedTransitions(const ClusterGraph& clusterGraph){
-    std::vector<ClusterTransition*> transitions;
-    std::unordered_map<const ClusterTransition*, int> seen;
+void rebuildParentHierarchy(StructureAnalysis& structureAnalysis, const AnalysisContext* context = nullptr){
+    static_cast<void>(context);
+    ClusterGraph& graph = structureAnalysis.clusterGraph();
+    std::vector<ClusterTransition*> superClusterTransitions;
+    superClusterTransitions.reserve(graph.clusterTransitions().size());
+    for(ClusterTransition* transition : graph.clusterTransitions()){
+        if(!transition){
+            continue;
+        }
+        if(transition->distance == 2){
+            superClusterTransitions.push_back(transition);
+        }
+    }
+    ClusterHierarchyUtils::rebuildParentHierarchy(structureAnalysis, superClusterTransitions);
+}
 
-    for(Cluster* cluster : sortedClusters(clusterGraph)){
+std::vector<TransitionRow> collectExportedTransitions(
+    StructureAnalysis& structureAnalysis,
+    const AnalysisContext& context
+){
+    static_cast<void>(context);
+    std::vector<TransitionRow> transitions;
+    std::unordered_map<const ClusterTransition*, int> seen;
+    ClusterGraph& graph = structureAnalysis.clusterGraph();
+
+    for(Cluster* cluster : sortedClusters(graph)){
         for(ClusterTransition* transition = cluster->transitions; transition; transition = transition->next){
             if(!transition || !transition->cluster1 || !transition->cluster2){
                 continue;
@@ -68,25 +91,20 @@ std::vector<ClusterTransition*> collectDirectedTransitions(const ClusterGraph& c
             if(transition->cluster1->id == 0 || transition->cluster2->id == 0){
                 continue;
             }
-            if(seen.emplace(transition, static_cast<int>(seen.size())).second){
-                transitions.push_back(transition);
+            if(!seen.emplace(transition, static_cast<int>(seen.size())).second){
+                continue;
             }
+
+            TransitionRow row;
+            row.cluster1Id = transition->cluster1->id;
+            row.cluster2Id = transition->cluster2->id;
+            row.tm = transition->tm;
+            row.distance = transition->distance;
+            transitions.push_back(row);
         }
     }
 
     return transitions;
-}
-
-void rebuildParentHierarchy(StructureAnalysis& structureAnalysis){
-    ClusterGraph& graph = structureAnalysis.clusterGraph();
-    std::vector<ClusterTransition*> superClusterTransitions;
-    superClusterTransitions.reserve(graph.clusterTransitions().size());
-    for(ClusterTransition* transition : graph.clusterTransitions()){
-        if(transition && transition->distance == 2){
-            superClusterTransitions.push_back(transition);
-        }
-    }
-    ClusterHierarchyUtils::rebuildParentHierarchy(structureAnalysis, superClusterTransitions);
 }
 
 std::vector<std::string> splitFields(const std::string& line){
@@ -171,9 +189,16 @@ bool loadClustersTable(
     }
 
     std::size_t clusterIdIndex = 0;
-    std::size_t structureTypeIndex = 0;
-    if(!requireColumnIndex(indices, "cluster_id", clusterIdIndex, errorMessage) ||
-       !requireColumnIndex(indices, "structure_type", structureTypeIndex, errorMessage)){
+    if(!requireColumnIndex(indices, "cluster_id", clusterIdIndex, errorMessage)){
+        return false;
+    }
+    auto structureTypeIt = indices.find("structure_type");
+    auto topologyNameIt = indices.find("topology_name");
+    if(structureTypeIt == indices.end() && topologyNameIt == indices.end()){
+        AnalysisDumpUtils::setError(
+            errorMessage,
+            "Clusters table must contain at least one of 'structure_type' or 'topology_name'"
+        );
         return false;
     }
 
@@ -197,9 +222,50 @@ bool loadClustersTable(
     rows.reserve(rawRows.size());
     for(const auto& rawRow : rawRows){
         ClusterRow rowData;
-        if(!AnalysisDumpUtils::tryParseInt(rawRow[clusterIdIndex], rowData.clusterId) ||
-           !AnalysisDumpUtils::tryParseInt(rawRow[structureTypeIndex], rowData.structureType)){
-            AnalysisDumpUtils::setError(errorMessage, "Failed to parse integral values in clusters table");
+        if(!AnalysisDumpUtils::tryParseInt(rawRow[clusterIdIndex], rowData.clusterId)){
+            AnalysisDumpUtils::setError(errorMessage, "Failed to parse cluster_id in clusters table");
+            return false;
+        }
+
+        if(topologyNameIt != indices.end()){
+            rowData.topologyName = rawRow[topologyNameIt->second];
+            if(!rowData.topologyName.empty()){
+                const CrystalTopologyEntry* topology = crystalTopologyByName(rowData.topologyName);
+                if(!topology){
+                    AnalysisDumpUtils::setError(
+                        errorMessage,
+                        "Unknown topology_name '" + rowData.topologyName + "' in clusters table"
+                    );
+                    return false;
+                }
+                rowData.structureType = topology->structureType;
+                rowData.topologyName = topology->name;
+            }
+        }
+
+        if(structureTypeIt != indices.end()){
+            int parsedStructureType = 0;
+            if(!AnalysisDumpUtils::tryParseInt(rawRow[structureTypeIt->second], parsedStructureType)){
+                AnalysisDumpUtils::setError(errorMessage, "Failed to parse structure_type in clusters table");
+                return false;
+            }
+            if(rowData.structureType == 0){
+                rowData.structureType = parsedStructureType;
+            }else if(parsedStructureType != 0){
+                const CrystalTopologyEntry* parsedTopology = crystalTopologyByStructureType(parsedStructureType);
+                const int normalizedParsedType = parsedTopology ? parsedTopology->structureType : parsedStructureType;
+                if(normalizedParsedType != rowData.structureType){
+                    AnalysisDumpUtils::setError(
+                        errorMessage,
+                        "structure_type/topology_name mismatch in clusters table"
+                    );
+                    return false;
+                }
+            }
+        }
+
+        if(rowData.structureType == 0 && rowData.topologyName.empty()){
+            AnalysisDumpUtils::setError(errorMessage, "Failed to resolve cluster topology in clusters table");
             return false;
         }
 
@@ -361,7 +427,7 @@ bool rebuildClusterGraph(
 }
 
 bool writeClustersTable(
-    ClusterGraph& clusterGraph,
+    const std::vector<Cluster*>& clusters,
     const std::string& outputPath
 ){
     std::ofstream output(outputPath);
@@ -370,7 +436,7 @@ bool writeClustersTable(
     }
 
     output << std::setprecision(std::numeric_limits<double>::max_digits10);
-    output << "cluster_id\tstructure_type";
+    output << "cluster_id\tstructure_type\ttopology_name";
     for(int row = 0; row < 3; ++row){
         for(int column = 0; column < 3; ++column){
             output << "\torientation_" << row << column;
@@ -378,10 +444,12 @@ bool writeClustersTable(
     }
     output << '\n';
 
-    for(Cluster* cluster : sortedClusters(clusterGraph)){
+    for(Cluster* cluster : clusters){
+        const CrystalTopologyEntry* topology = crystalTopologyByStructureType(cluster->structure);
         output
             << cluster->id
-            << '\t' << cluster->structure;
+            << '\t' << cluster->structure
+            << '\t' << (topology ? topology->name : std::to_string(cluster->structure));
         writeMatrixColumns(output, cluster->orientation);
         output
             << '\n';
@@ -391,15 +459,13 @@ bool writeClustersTable(
 }
 
 bool writeClusterTransitionsTable(
-    const ClusterGraph& clusterGraph,
+    const std::vector<TransitionRow>& transitions,
     const std::string& outputPath
 ){
     std::ofstream output(outputPath);
     if(!output.is_open()){
         return false;
     }
-
-    const std::vector<ClusterTransition*> transitions = collectDirectedTransitions(clusterGraph);
 
     output << std::setprecision(std::numeric_limits<double>::max_digits10);
     output << "cluster1_id\tcluster2_id";
@@ -411,13 +477,13 @@ bool writeClusterTransitionsTable(
     output << "\tdistance\n";
 
     for(std::size_t transitionIndex = 0; transitionIndex < transitions.size(); ++transitionIndex){
-        const ClusterTransition* transition = transitions[transitionIndex];
+        const TransitionRow& transition = transitions[transitionIndex];
         output
-            << transition->cluster1->id
-            << '\t' << transition->cluster2->id;
-        writeMatrixColumns(output, transition->tm);
+            << transition.cluster1Id
+            << '\t' << transition.cluster2Id;
+        writeMatrixColumns(output, transition.tm);
         output
-            << '\t' << transition->distance
+            << '\t' << transition.distance
             << '\n';
     }
 
@@ -428,8 +494,16 @@ bool writeClusterTransitionsTable(
 
 using namespace ClusterGraphExportDetail;
 
+void normalizeReconstructedClusterGraphForExport(
+    StructureAnalysis& structureAnalysis,
+    AnalysisContext& context
+){
+    rebuildParentHierarchy(structureAnalysis, &context);
+}
+
 bool exportClusterGraph(
-    ClusterGraph& clusterGraph,
+    StructureAnalysis& structureAnalysis,
+    const AnalysisContext& context,
     const std::string& outputBase,
     ClusterGraphExportPaths* paths
 ){
@@ -444,10 +518,16 @@ bool exportClusterGraph(
     const std::string clustersTablePath = outputBase + kClustersSuffix;
     const std::string clusterTransitionsTablePath = outputBase + kClusterTransitionsSuffix;
 
-    if(!writeClustersTable(clusterGraph, clustersTablePath)){
+    rebuildParentHierarchy(structureAnalysis, &context);
+
+    ClusterGraph& clusterGraph = structureAnalysis.clusterGraph();
+    const std::vector<Cluster*> clusters = sortedClusters(clusterGraph);
+    const std::vector<TransitionRow> transitions = collectExportedTransitions(structureAnalysis, context);
+
+    if(!writeClustersTable(clusters, clustersTablePath)){
         return false;
     }
-    if(!writeClusterTransitionsTable(clusterGraph, clusterTransitionsTablePath)){
+    if(!writeClusterTransitionsTable(transitions, clusterTransitionsTablePath)){
         return false;
     }
 

@@ -157,6 +157,8 @@ bool ReconstructedStructureLoader::load(
         return false;
     }
 
+    rebuildImportedClusterParentHierarchy(structureAnalysis);
+
     return true;
 }
 

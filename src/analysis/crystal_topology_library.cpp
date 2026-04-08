@@ -1,7 +1,7 @@
 #include <volt/analysis/crystal_topology_library.h>
 #include <volt/analysis/crystal_symmetry_utils.h>
 
-#include <volt/structures/lattice_vectors.h>
+#include <volt/structures/crystal_topology_registry.h>
 
 #include <algorithm>
 #include <array>
@@ -11,150 +11,46 @@
 #include <mutex>
 #include <numeric>
 #include <stdexcept>
+#include <unordered_map>
 
 namespace Volt{
 
 namespace SharedCrystalTopologyDetail{
 
-int normalizeSharedStructureType(int structureType){
-    switch(static_cast<StructureType>(structureType)){
-        case StructureType::CUBIC_DIAMOND:
-        case StructureType::CUBIC_DIAMOND_FIRST_NEIGH:
-        case StructureType::CUBIC_DIAMOND_SECOND_NEIGH:
-            return StructureType::CUBIC_DIAMOND;
-        case StructureType::HEX_DIAMOND:
-        case StructureType::HEX_DIAMOND_FIRST_NEIGH:
-        case StructureType::HEX_DIAMOND_SECOND_NEIGH:
-            return StructureType::HEX_DIAMOND;
-        default:
-            return structureType;
+const CrystalTopologyEntry& requireTopologyEntry(int structureType){
+    const auto* entry = crystalTopologyByStructureType(structureType);
+    if(!entry){
+        throw std::runtime_error("Unsupported shared crystal topology request.");
+    }
+    return *entry;
+}
+
+void initializePrimitiveCell(SharedCrystalTopology& topology, const CrystalTopologyEntry& entry){
+    topology.primitiveCell = entry.primitiveCell;
+    topology.primitiveCellInverse = entry.primitiveCellInverse;
+}
+
+void initializeBondedNeighbors(SharedCrystalTopology& topology, const CrystalTopologyEntry& entry){
+    topology.coordinationNumber = entry.coordinationNumber;
+    for(int ni1 = 0; ni1 < entry.coordinationNumber; ++ni1){
+        topology.neighborBonds.neighborArray[static_cast<std::size_t>(ni1)] =
+            entry.neighborBondRows[static_cast<std::size_t>(ni1)];
+        topology.commonNeighbors[static_cast<std::size_t>(ni1)] =
+            entry.commonNeighbors[static_cast<std::size_t>(ni1)];
     }
 }
 
-void initializePrimitiveCell(
-    SharedCrystalTopology& topology,
-    const Vector3 (&primitiveCell)[3]
-){
-    topology.primitiveCell.column(0) = primitiveCell[0];
-    topology.primitiveCell.column(1) = primitiveCell[1];
-    topology.primitiveCell.column(2) = primitiveCell[2];
-    topology.primitiveCellInverse = topology.primitiveCell.inverse();
-}
-
-template<typename BondPredicate>
-void initializeBondedNeighbors(
-    SharedCrystalTopology& topology,
-    const Vector3* vectors,
-    int coordinationNumber,
-    BondPredicate bondPredicate
-){
-    topology.coordinationNumber = coordinationNumber;
-    topology.commonNeighbors.fill({-1, -1});
-
-    for(int ni1 = 0; ni1 < coordinationNumber; ++ni1){
-        topology.neighborBonds.setNeighborBond(ni1, ni1, false);
-        for(int ni2 = ni1 + 1; ni2 < coordinationNumber; ++ni2){
-            topology.neighborBonds.setNeighborBond(ni1, ni2, bondPredicate(vectors[ni1], vectors[ni2]));
+void initializeExplicitSymmetries(SharedCrystalTopology& topology, const CrystalTopologyEntry& entry){
+    topology.symmetries.clear();
+    topology.symmetries.reserve(entry.symmetries.size());
+    for(const auto& symmetry : entry.symmetries){
+        SharedCrystalSymmetryPermutation sharedSymmetry;
+        sharedSymmetry.transformation = symmetry.transformation;
+        sharedSymmetry.permutation.fill(-1);
+        for(std::size_t slot = 0; slot < symmetry.permutation.size() && slot < sharedSymmetry.permutation.size(); ++slot){
+            sharedSymmetry.permutation[slot] = symmetry.permutation[slot];
         }
-    }
-}
-
-void initializeDiamondBonds(
-    SharedCrystalTopology& topology,
-    const Vector3* vectors,
-    int coordinationNumber
-){
-    topology.coordinationNumber = coordinationNumber;
-    topology.commonNeighbors.fill({-1, -1});
-
-    for(int ni1 = 0; ni1 < coordinationNumber; ++ni1){
-        topology.neighborBonds.setNeighborBond(ni1, ni1, false);
-        const double cutoff = (ni1 < 4)
-            ? (std::sqrt(3.0) * 0.25 + std::sqrt(0.5)) / 2.0
-            : (1.0 + std::sqrt(0.5)) / 2.0;
-
-        for(int ni2 = 0; ni2 < 4; ++ni2){
-            if(ni1 < 4 && ni2 < 4){
-                topology.neighborBonds.setNeighborBond(ni1, ni2, false);
-            }
-        }
-
-        for(int ni2 = std::max(ni1 + 1, 4); ni2 < coordinationNumber; ++ni2){
-            topology.neighborBonds.setNeighborBond(ni1, ni2, (vectors[ni1] - vectors[ni2]).length() < cutoff);
-        }
-    }
-}
-
-void findCommonNeighborsForBond(SharedCrystalTopology& topology, int neighborIndex){
-    Matrix3 basis = Matrix3::Zero();
-    basis.column(0) = topology.latticeVectors[static_cast<std::size_t>(neighborIndex)];
-
-    if(topology.coordinationNumber == 6){
-        for(int i1 = 0; i1 < 6; ++i1){
-            if(i1 == neighborIndex || i1 == (neighborIndex ^ 1)){
-                continue;
-            }
-            basis.column(1) = topology.latticeVectors[static_cast<std::size_t>(i1)];
-
-            for(int i2 = i1 + 1; i2 < 6; ++i2){
-                if(i2 == neighborIndex || i2 == (neighborIndex ^ 1) || i2 == (i1 ^ 1)){
-                    continue;
-                }
-                basis.column(2) = topology.latticeVectors[static_cast<std::size_t>(i2)];
-                if(std::abs(basis.determinant()) > EPSILON){
-                    topology.commonNeighbors[static_cast<std::size_t>(neighborIndex)] = {i1, i2};
-                    return;
-                }
-            }
-        }
-        return;
-    }
-
-    for(int i1 = 0; i1 < topology.coordinationNumber; ++i1){
-        if(!topology.neighborBonds.neighborBond(neighborIndex, i1)){
-            continue;
-        }
-        basis.column(1) = topology.latticeVectors[static_cast<std::size_t>(i1)];
-
-        for(int i2 = i1 + 1; i2 < topology.coordinationNumber; ++i2){
-            if(!topology.neighborBonds.neighborBond(neighborIndex, i2)){
-                continue;
-            }
-            basis.column(2) = topology.latticeVectors[static_cast<std::size_t>(i2)];
-            if(std::abs(basis.determinant()) > EPSILON){
-                topology.commonNeighbors[static_cast<std::size_t>(neighborIndex)] = {i1, i2};
-                return;
-            }
-        }
-    }
-}
-
-void generateGenericSymmetryPermutations(SharedCrystalTopology& topology){
-    AnalysisSymmetryUtils::generateSymmetryPermutations(
-        topology.latticeVectors,
-        topology.coordinationNumber,
-        topology.latticeVectors,
-        topology.symmetries
-    );
-}
-
-void initializeSimpleCubicSymmetries(SharedCrystalTopology& topology){
-    for(const Matrix3& rotation : AnalysisSymmetryUtils::cubicSymmetryRotations()){
-        SharedCrystalSymmetryPermutation symmetry;
-        symmetry.transformation = rotation;
-        symmetry.permutation.fill(-1);
-
-        for(int vectorIndex = 0; vectorIndex < topology.coordinationNumber; ++vectorIndex){
-            const Vector3 transformedVector = rotation * topology.latticeVectors[static_cast<std::size_t>(vectorIndex)];
-            for(int candidateIndex = 0; candidateIndex < topology.coordinationNumber; ++candidateIndex){
-                if(transformedVector.equals(topology.latticeVectors[static_cast<std::size_t>(candidateIndex)])){
-                    symmetry.permutation[static_cast<std::size_t>(vectorIndex)] = candidateIndex;
-                    break;
-                }
-            }
-        }
-
-        topology.symmetries.push_back(std::move(symmetry));
+        topology.symmetries.push_back(std::move(sharedSymmetry));
     }
 }
 
@@ -162,134 +58,34 @@ void calculateSymmetryProducts(SharedCrystalTopology& topology){
     AnalysisSymmetryUtils::calculateSymmetryProducts(topology.symmetries);
 }
 
-template<typename BondPredicate>
-void initializeBondedTopology(
-    SharedCrystalTopology& topology,
-    const Vector3* vectors,
-    int coordinationNumber,
-    int totalVectors,
-    const Vector3 (&primitiveCell)[3],
-    BondPredicate bondPredicate,
-    bool useExplicitCubicSymmetries = false
-){
+void initializeTopologyFromEntry(SharedCrystalTopology& topology, const CrystalTopologyEntry& entry){
     topology = SharedCrystalTopology{};
-    topology.latticeVectors.assign(vectors, vectors + totalVectors);
-    initializePrimitiveCell(topology, primitiveCell);
-    initializeBondedNeighbors(topology, vectors, coordinationNumber, bondPredicate);
-
-    for(int neighborIndex = 0; neighborIndex < coordinationNumber; ++neighborIndex){
-        findCommonNeighborsForBond(topology, neighborIndex);
-    }
-
-    if(useExplicitCubicSymmetries){
-        initializeSimpleCubicSymmetries(topology);
-    }else{
-        generateGenericSymmetryPermutations(topology);
-    }
+    topology.latticeVectors = entry.latticeVectors;
+    initializePrimitiveCell(topology, entry);
+    initializeBondedNeighbors(topology, entry);
+    initializeExplicitSymmetries(topology, entry);
     calculateSymmetryProducts(topology);
 }
 
-void initializeDiamondTopology(
-    SharedCrystalTopology& topology,
-    const Vector3* vectors,
-    int coordinationNumber,
-    int totalVectors,
-    const Vector3 (&primitiveCell)[3]
-){
-    topology = SharedCrystalTopology{};
-    topology.latticeVectors.assign(vectors, vectors + totalVectors);
-    initializePrimitiveCell(topology, primitiveCell);
-    initializeDiamondBonds(topology, vectors, coordinationNumber);
-
-    for(int neighborIndex = 0; neighborIndex < coordinationNumber; ++neighborIndex){
-        findCommonNeighborsForBond(topology, neighborIndex);
-    }
-
-    generateGenericSymmetryPermutations(topology);
-    calculateSymmetryProducts(topology);
-}
-
-const SharedCrystalTopology& initializeSharedTopology(int normalizedStructureType){
+const SharedCrystalTopology& initializeSharedTopology(int structureType){
     static std::once_flag initFlag;
-    static SharedCrystalTopology simpleCubicTopology;
-    static SharedCrystalTopology faceCenteredCubicTopology;
-    static SharedCrystalTopology hexagonalClosePackedTopology;
-    static SharedCrystalTopology bodyCenteredCubicTopology;
-    static SharedCrystalTopology cubicDiamondTopology;
-    static SharedCrystalTopology hexDiamondTopology;
+    static std::unordered_map<int, SharedCrystalTopology> topologies;
 
     std::call_once(initFlag, []() {
-        initializeBondedTopology(
-            simpleCubicTopology,
-            SC_VECTORS,
-            static_cast<int>(std::size(SC_VECTORS)),
-            static_cast<int>(std::size(SC_VECTORS)),
-            SC_PRIMITIVE_CELL,
-            [](const Vector3&, const Vector3&) { return false; },
-            true
-        );
-        initializeBondedTopology(
-            faceCenteredCubicTopology,
-            FCC_VECTORS,
-            12,
-            12,
-            FCC_PRIMITIVE_CELL,
-            [](const Vector3& v1, const Vector3& v2) {
-                return (v1 - v2).length() < (std::sqrt(0.5) + 1.0) * 0.5;
+        for(const CrystalTopologyEntry& entry : crystalTopologyRegistry().entries()){
+            if(entry.structureType <= 0){
+                continue;
             }
-        );
-        initializeBondedTopology(
-            hexagonalClosePackedTopology,
-            HCP_VECTORS,
-            12,
-            18,
-            HCP_PRIMITIVE_CELL,
-            [](const Vector3& v1, const Vector3& v2) {
-                return (v1 - v2).length() < (std::sqrt(0.5) + 1.0) * 0.5;
-            }
-        );
-        initializeBondedTopology(
-            bodyCenteredCubicTopology,
-            BCC_VECTORS,
-            14,
-            14,
-            BCC_PRIMITIVE_CELL,
-            [](const Vector3& v1, const Vector3& v2) {
-                return (v1 - v2).length() < (1.0 + std::sqrt(2.0)) * 0.5;
-            }
-        );
-        initializeDiamondTopology(
-            cubicDiamondTopology,
-            DIAMOND_CUBIC_VECTORS,
-            16,
-            20,
-            CUBIC_DIAMOND_PRIMITIVE_CELL
-        );
-        initializeDiamondTopology(
-            hexDiamondTopology,
-            DIAMOND_HEX_VECTORS,
-            16,
-            32,
-            HEXAGONAL_DIAMOND_PRIMITIVE_CELL
-        );
+            initializeTopologyFromEntry(topologies[entry.structureType], entry);
+        }
     });
 
-    switch(static_cast<StructureType>(normalizedStructureType)){
-        case StructureType::SC:
-            return simpleCubicTopology;
-        case StructureType::FCC:
-            return faceCenteredCubicTopology;
-        case StructureType::HCP:
-            return hexagonalClosePackedTopology;
-        case StructureType::BCC:
-            return bodyCenteredCubicTopology;
-        case StructureType::CUBIC_DIAMOND:
-            return cubicDiamondTopology;
-        case StructureType::HEX_DIAMOND:
-            return hexDiamondTopology;
-        default:
-            throw std::runtime_error("Unsupported shared crystal topology request.");
+    const CrystalTopologyEntry& entry = requireTopologyEntry(structureType);
+    const auto it = topologies.find(entry.structureType);
+    if(it == topologies.end()){
+        throw std::runtime_error("Unsupported shared crystal topology request.");
     }
+    return it->second;
 }
 
 }
@@ -297,18 +93,9 @@ const SharedCrystalTopology& initializeSharedTopology(int normalizedStructureTyp
 using namespace SharedCrystalTopologyDetail;
 
 const SharedCrystalTopology* sharedCrystalTopology(int structureType){
-    const int normalized = normalizeSharedStructureType(structureType);
-    switch(static_cast<StructureType>(normalized)){
-        case StructureType::SC:
-        case StructureType::FCC:
-        case StructureType::HCP:
-        case StructureType::BCC:
-        case StructureType::CUBIC_DIAMOND:
-        case StructureType::HEX_DIAMOND:
-            return &initializeSharedTopology(normalized);
-        default:
-            return nullptr;
-    }
+    return crystalTopologyByStructureType(structureType)
+        ? &initializeSharedTopology(structureType)
+        : nullptr;
 }
 
 int findClosestSharedCrystalSymmetryPermutation(
@@ -370,8 +157,56 @@ bool adaptSharedCrystalTopology(
         usedCanonical[static_cast<std::size_t>(bestCanonicalIndex)] = 1;
     }
 
+    Matrix3 canonicalBasis = Matrix3::Zero();
+    Matrix3 localBasis = Matrix3::Zero();
+    int basisCount = 0;
+    for(int localIndex = 0; localIndex < sharedTopology.coordinationNumber && basisCount < 3; ++localIndex){
+        const int canonicalIndex = localToCanonical[static_cast<std::size_t>(localIndex)];
+        if(canonicalIndex < 0){
+            return false;
+        }
+
+        canonicalBasis.column(basisCount) = sharedTopology.latticeVectors[static_cast<std::size_t>(canonicalIndex)];
+        localBasis.column(basisCount) = localVectors[static_cast<std::size_t>(localIndex)];
+
+        if(basisCount == 1){
+            if(canonicalBasis.column(0).cross(canonicalBasis.column(1)).squaredLength() <= EPSILON){
+                continue;
+            }
+            if(localBasis.column(0).cross(localBasis.column(1)).squaredLength() <= EPSILON){
+                continue;
+            }
+        }else if(basisCount == 2){
+            if(std::abs(canonicalBasis.determinant()) <= EPSILON){
+                continue;
+            }
+            if(std::abs(localBasis.determinant()) <= EPSILON){
+                continue;
+            }
+        }
+
+        ++basisCount;
+    }
+
+    if(basisCount != 3){
+        return false;
+    }
+
+    Matrix3 canonicalBasisInverse;
+    if(!canonicalBasis.inverse(canonicalBasisInverse)){
+        return false;
+    }
+
+    const Matrix3 frameCanonicalToLocal = localBasis * canonicalBasisInverse;
+    Matrix3 frameLocalToCanonical;
+    if(!frameCanonicalToLocal.inverse(frameLocalToCanonical)){
+        return false;
+    }
+
     outTopology = AdaptedCrystalTopology{};
     outTopology.coordinationNumber = sharedTopology.coordinationNumber;
+    outTopology.localToCanonical = localToCanonical;
+    outTopology.canonicalToLocal = canonicalToLocal;
     outTopology.latticeVectors.assign(
         localVectors.begin(),
         localVectors.begin() + sharedTopology.coordinationNumber
@@ -390,7 +225,8 @@ bool adaptSharedCrystalTopology(
 
     for(const auto& sharedSymmetry : sharedTopology.symmetries){
         SharedCrystalSymmetryPermutation adaptedSymmetry;
-        adaptedSymmetry.transformation = sharedSymmetry.transformation;
+        adaptedSymmetry.transformation =
+            frameCanonicalToLocal * sharedSymmetry.transformation * frameLocalToCanonical;
         adaptedSymmetry.permutation.fill(-1);
 
         for(int localIndex = 0; localIndex < sharedTopology.coordinationNumber; ++localIndex){

@@ -1,5 +1,6 @@
 #include <volt/core/volt.h>
 #include <volt/analysis/structure_analysis.h>
+#include <volt/analysis/cluster_hierarchy_rebuilder.h>
 #include <spdlog/spdlog.h>
 
 #include <algorithm>
@@ -68,6 +69,14 @@ StructureAnalysis::StructureAnalysis(
         }
         std::fill(_context.structureTypes->dataInt(), _context.structureTypes->dataInt() + _context.structureTypes->size(), LATTICE_OTHER);
     }
+}
+
+Cluster* StructureAnalysis::atomCluster(int atomIndex) const{
+    Cluster* cluster = clusterGraph().findCluster(_context.atomClusters->getInt(atomIndex));
+    if(!cluster){
+        return nullptr;
+    }
+    return ClusterHierarchyUtils::getParentGrain(const_cast<StructureAnalysis&>(*this), cluster);
 }
 
 int StructureAnalysis::getNeighbor(int centralAtomIndex, int neighborListIndex) const{

@@ -69,9 +69,7 @@ public:
 		return *_clusterGraph;
 	}
 
-	Cluster* atomCluster(int atomIndex) const{
-		return clusterGraph().findCluster(_context.atomClusters->getInt(atomIndex));
-	}
+	Cluster* atomCluster(int atomIndex) const;
 	
 	int findClosestSymmetryPermutation(int structureType, const Matrix3& rotation) const;
 	int coordinationNumber(int structureType) const;

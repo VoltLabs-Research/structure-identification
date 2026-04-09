@@ -30,8 +30,6 @@ struct AdaptedCrystalTopology{
     std::vector<Vector3> latticeVectors;
     std::array<std::array<int, 2>, MAX_NEIGHBORS> commonNeighbors{};
     std::vector<SharedCrystalSymmetryPermutation> symmetries;
-    std::vector<int> localToCanonical;
-    std::vector<int> canonicalToLocal;
 };
 
 const SharedCrystalTopology* sharedCrystalTopology(int structureType);

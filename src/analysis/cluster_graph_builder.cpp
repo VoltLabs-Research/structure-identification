@@ -1,7 +1,6 @@
 #include <volt/analysis/cluster_graph_builder.h>
 #include <volt/analysis/cluster_hierarchy_rebuilder.h>
 #include <volt/analysis/cluster_rule_provider.h>
-#include <volt/analysis/reconstructed_state_canonicalizer.h>
 
 #include <spdlog/spdlog.h>
 #include <tbb/parallel_for.h>
@@ -19,13 +18,6 @@ constexpr bool symmetryAllowed(std::uint64_t mask, int symmetryIndex){
     return symmetryIndex >= 0
         && symmetryIndex < 63
         && (mask & (std::uint64_t{1} << symmetryIndex)) != 0;
-}
-
-constexpr bool symmetryAllowedWithFallback(std::uint64_t mask, int symmetryIndex){
-    if(mask == 0){
-        return symmetryIndex >= 0;
-    }
-    return symmetryAllowed(mask, symmetryIndex);
 }
 
 }
@@ -48,28 +40,8 @@ int ClusterBuilder::selectInitialSymmetryPermutation(int atomIndex, int structur
     );
 
     const int symmetryCount = _sa.symmetryPermutationCount(structureType);
-    if(symmetryCount <= 0){
-        return -1;
-    }
-
-    if(_context.atomSymmetryPermutations){
-        const int existingSymmetry = _context.atomSymmetryPermutations->getInt(static_cast<std::size_t>(atomIndex));
-        if(existingSymmetry >= 0 &&
-           existingSymmetry < symmetryCount &&
-           symmetryAllowedWithFallback(allowedMask, existingSymmetry)){
-            return existingSymmetry;
-        }
-    }
-
-    const int identityLikeSymmetry = _sa.findClosestSymmetryPermutation(structureType, Matrix3::Identity());
-    if(identityLikeSymmetry >= 0 &&
-       identityLikeSymmetry < symmetryCount &&
-       symmetryAllowedWithFallback(allowedMask, identityLikeSymmetry)){
-        return identityLikeSymmetry;
-    }
-
     for(int symmetryIndex = 0; symmetryIndex < symmetryCount; ++symmetryIndex){
-        if(symmetryAllowedWithFallback(allowedMask, symmetryIndex)){
+        if(symmetryAllowed(allowedMask, symmetryIndex)){
             return symmetryIndex;
         }
     }
@@ -506,7 +478,6 @@ void ClusterBuilder::buildClusterAssignments(){
 void ClusterBuilder::build(bool dissolveSmallClusters){
     buildClusterAssignments();
     reorientAtomsToAlign();
-    ReconstructedStateCanonicalizer::canonicalizeSymmetryPermutations(_sa, _context);
     connectClusters();
     formSuperClusters();
     if(dissolveSmallClusters){

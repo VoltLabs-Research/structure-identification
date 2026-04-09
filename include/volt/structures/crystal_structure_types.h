@@ -1,12 +1,12 @@
 #pragma once
 
 #include <string_view>
-#include <utility>
-
-#include <volt/structures/crystal_topology_registry.h>
 
 namespace Volt{
 
+// Broad categories for crystal structures detected on an atom.
+// Used to classify each atom's local arrangement into a known lattice
+// type (e.g. FCC, BCC) or mark it as "OTHER" if it doesn't fit.
 enum StructureType{
     OTHER = 0,
     SC,
@@ -25,94 +25,97 @@ enum StructureType{
     NUM_STRUCTURE_TYPES
 };
 
-using CoordinationStructureType = int;
-inline constexpr CoordinationStructureType COORD_OTHER = 0;
-inline constexpr CoordinationStructureType COORD_SC = 1;
-inline constexpr CoordinationStructureType COORD_FCC = 2;
-inline constexpr CoordinationStructureType COORD_HCP = 3;
-inline constexpr CoordinationStructureType COORD_BCC = 4;
-inline constexpr CoordinationStructureType COORD_CUBIC_DIAMOND = 5;
-inline constexpr CoordinationStructureType COORD_HEX_DIAMOND = 6;
+// Detailed coordination patterns for common-neighbor analysis.
+// Describes how each atom's neighbors connect to each other, allowing
+// distinguishing subtly different packings, like FCC vs HCP, or diamond
+// vs hexagonal diamond.
+// TODO: CREATE A FUNCTION STRUCTURETYPE TO COORDINATION STRUCTURE TYPE
+enum CoordinationStructureType{
+    // No matching coordination pattern
+    COORD_OTHER = 0,
+    COORD_SC,
+    // 12 neighbors in 4-2-1 ring pattern
+    COORD_FCC,
+    // 12 neighbors in 4-2-2 ring pattern
+    COORD_HCP,
+    // 14 neighbors in 6-6-6 vs 4-4-4 pattern
+    COORD_BCC,
+    // 4 + 12 neighbors with 5-4-3 rings
+    COORD_CUBIC_DIAMOND,
+    // 4 + 12 neighbors with 5-4-4 rings
+    COORD_HEX_DIAMOND,
+    NUM_COORD_TYPES 
+};
 
-using LatticeStructureType = int;
-inline constexpr LatticeStructureType LATTICE_OTHER = 0;
-inline constexpr LatticeStructureType LATTICE_SC = 1;
-inline constexpr LatticeStructureType LATTICE_FCC = 2;
-inline constexpr LatticeStructureType LATTICE_HCP = 3;
-inline constexpr LatticeStructureType LATTICE_BCC = 4;
-inline constexpr LatticeStructureType LATTICE_CUBIC_DIAMOND = 5;
-inline constexpr LatticeStructureType LATTICE_HEX_DIAMOND = 6;
+// High level lattice types for polyhedral template matching
+// Defines the ideal reference lattices that the PTM algorithm
+// can detect such as FCC or hexagonal diamond
+enum LatticeStructureType{
+    LATTICE_OTHER = 0,
+    LATTICE_SC,
+    LATTICE_FCC,
+    LATTICE_HCP,
+    LATTICE_BCC,
+    // (zinc blende without basis)
+    LATTICE_CUBIC_DIAMOND,
+    // (wurtzite-type)
+    LATTICE_HEX_DIAMOND,
+    NUM_LATTICE_TYPES
+};
 
+// Maximum number of nearest neighbors supported by reconstructed analyses.
+// Diamond-type structures require 16 slots to carry the 4 first-shell and 12 second-shell neighbors.
 enum { MAX_NEIGHBORS = 16 };
 
+// Bitmask type representing a bond between two common neighbors.
+// Each bit in a CNAPairBond corresponds to one neighbor index;
+// the union of two bits marks a neighbor-neighbor bond.
 typedef unsigned int CNAPairBond;
 
-inline const char* legacyStructureTypeName(int structure){
-    static constexpr std::pair<int, const char*> kLegacyNames[] = {
-        {StructureType::OTHER, "OTHER"},
-        {StructureType::SC, "SC"},
-        {StructureType::FCC, "FCC"},
-        {StructureType::HCP, "HCP"},
-        {StructureType::BCC, "BCC"},
-        {StructureType::CUBIC_DIAMOND, "CUBIC_DIAMOND"},
-        {StructureType::HEX_DIAMOND, "HEX_DIAMOND"},
-        {StructureType::ICO, "ICO"},
-        {StructureType::GRAPHENE, "GRAPHENE"},
-        {StructureType::CUBIC_DIAMOND_FIRST_NEIGH, "CUBIC_DIAMOND_FIRST_NEIGH"},
-        {StructureType::CUBIC_DIAMOND_SECOND_NEIGH, "CUBIC_DIAMOND_SECOND_NEIGH"},
-        {StructureType::HEX_DIAMOND_FIRST_NEIGH, "HEX_DIAMOND_FIRST_NEIGH"},
-        {StructureType::HEX_DIAMOND_SECOND_NEIGH, "HEX_DIAMOND_SECOND_NEIGH"},
-        {StructureType::L12, "L12"},
-    };
-
-    for(const auto& [identifier, name] : kLegacyNames){
-        if(identifier == structure){
-            return name;
-        }
-    }
-    return "OTHER";
-}
-
-inline const char* legacyLatticeStructureTypeName(LatticeStructureType structure){
-    static constexpr std::pair<LatticeStructureType, const char*> kLegacyNames[] = {
-        {LATTICE_OTHER, "OTHER"},
-        {LATTICE_SC, "SC"},
-        {LATTICE_FCC, "FCC"},
-        {LATTICE_HCP, "HCP"},
-        {LATTICE_BCC, "BCC"},
-        {LATTICE_CUBIC_DIAMOND, "CUBIC_DIAMOND"},
-        {LATTICE_HEX_DIAMOND, "HEX_DIAMOND"},
-    };
-
-    for(const auto& [identifier, name] : kLegacyNames){
-        if(identifier == structure){
-            return name;
-        }
+inline const char* latticeStructureTypeName(LatticeStructureType structure){
+    switch(structure){
+        case LATTICE_FCC:
+            return "FCC";
+        case LATTICE_HCP:
+            return "HCP";
+        case LATTICE_BCC:
+            return "BCC";
+        case LATTICE_CUBIC_DIAMOND:
+            return "CUBIC_DIAMOND";
+        case LATTICE_HEX_DIAMOND:
+            return "HEX_DIAMOND";
+        case LATTICE_SC:
+            return "SC";
+        case LATTICE_OTHER:
+        case NUM_LATTICE_TYPES:
+            break;
     }
     return "UNKNOWN";
 }
 
-inline const char* structureTypeName(int structure){
-    if(const auto* topology = crystalTopologyByStructureType(structure)){
-        return topology->name.c_str();
-    }
-    return legacyStructureTypeName(structure);
-}
-
-inline const char* structureTypeName(StructureType structure){
-    return structureTypeName(static_cast<int>(structure));
-}
-
-inline const char* latticeStructureTypeName(LatticeStructureType structure){
-    if(const auto* topology = crystalTopologyByLatticeType(structure)){
-        return topology->name.c_str();
-    }
-    return legacyLatticeStructureTypeName(structure);
-}
-
 inline bool parseLatticeStructureType(std::string_view text, LatticeStructureType& structure){
-    if(const auto* topology = crystalTopologyByName(text)){
-        structure = static_cast<LatticeStructureType>(topology->latticeType);
+    if(text == "FCC"){
+        structure = LATTICE_FCC;
+        return true;
+    }
+    if(text == "BCC"){
+        structure = LATTICE_BCC;
+        return true;
+    }
+    if(text == "HCP"){
+        structure = LATTICE_HCP;
+        return true;
+    }
+    if(text == "SC"){
+        structure = LATTICE_SC;
+        return true;
+    }
+    if(text == "CUBIC_DIAMOND"){
+        structure = LATTICE_CUBIC_DIAMOND;
+        return true;
+    }
+    if(text == "HEX_DIAMOND"){
+        structure = LATTICE_HEX_DIAMOND;
         return true;
     }
     return false;

@@ -55,7 +55,6 @@ endif()
 set(LIBRARY_SOURCES
 	${CMAKE_SOURCE_DIR}/src/analysis/structure_analysis_context.cpp
 	${CMAKE_SOURCE_DIR}/src/analysis/reconstructed_dump_utils.cpp
-	${CMAKE_SOURCE_DIR}/src/analysis/reconstructed_state_canonicalizer.cpp
 	${CMAKE_SOURCE_DIR}/src/analysis/cluster_graph_io.cpp
 	${CMAKE_SOURCE_DIR}/src/analysis/cluster_graph_builder.cpp
 	${CMAKE_SOURCE_DIR}/src/analysis/crystal_topology_library.cpp

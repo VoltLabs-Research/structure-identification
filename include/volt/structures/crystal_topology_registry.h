@@ -1,7 +1,9 @@
 #pragma once
 
 #include <volt/core/volt.h>
+#include <volt/structures/crystal_structure_types.h>
 
+#include <array>
 #include <filesystem>
 #include <string>
 #include <string_view>
@@ -12,7 +14,7 @@ namespace Volt{
 
 struct CrystalTopologySymmetry{
     Matrix3 transformation = Matrix3::Identity();
-    std::vector<int> permutation;
+    std::array<int, MAX_NEIGHBORS> permutation{};
 };
 
 struct CrystalTopologyEntry{

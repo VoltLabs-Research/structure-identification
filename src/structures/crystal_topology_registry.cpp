@@ -1,5 +1,7 @@
 #include <volt/structures/crystal_topology_registry.h>
 
+#include <volt/analysis/crystal_symmetry_utils.h>
+
 #include <yaml-cpp/yaml.h>
 
 #include <algorithm>
@@ -65,42 +67,24 @@ std::vector<Vector3> parseVectorList(const YAML::Node& value){
     return result;
 }
 
-std::vector<CrystalTopologySymmetry> parseSymmetryPermutations(const YAML::Node& value, int coordinationNumber){
-    std::vector<CrystalTopologySymmetry> result;
-    if(!value || !value.IsSequence()){
-        return result;
-    }
+std::vector<Vector3> activeNeighborShell(const CrystalTopologyEntry& entry){
+    return std::vector<Vector3>(
+        entry.neighborVectors.begin(),
+        entry.neighborVectors.begin() + entry.coordinationNumber
+    );
+}
 
-    result.reserve(value.size());
-    for(const auto& item : value){
-        if(!item || !item.IsMap()){
-            throw std::runtime_error("Expected symmetry_permutations entries to be mappings.");
-        }
-
-        CrystalTopologySymmetry symmetry;
-        symmetry.permutation.assign(static_cast<std::size_t>(coordinationNumber), -1);
-
-        const YAML::Node transformation = item["transformation"];
-        if(!transformation || !transformation.IsSequence() || transformation.size() != 3){
-            throw std::runtime_error("Expected transformation to contain three vectors.");
-        }
-        symmetry.transformation.column(0) = parseVector3(transformation[0]);
-        symmetry.transformation.column(1) = parseVector3(transformation[1]);
-        symmetry.transformation.column(2) = parseVector3(transformation[2]);
-
-        const YAML::Node permutation = item["permutation"];
-        if(!permutation || !permutation.IsSequence() || static_cast<int>(permutation.size()) != coordinationNumber){
-            throw std::runtime_error("symmetry permutation size does not match coordination_number.");
-        }
-        for(int index = 0; index < coordinationNumber; ++index){
-            symmetry.permutation[static_cast<std::size_t>(index)] =
-                permutation[static_cast<std::size_t>(index)].as<int>();
-        }
-
-        result.push_back(std::move(symmetry));
-    }
-
-    return result;
+std::vector<CrystalTopologySymmetry> generateSymmetryPermutations(const CrystalTopologyEntry& entry){
+    std::vector<CrystalTopologySymmetry> symmetries;
+    const std::vector<Vector3> canonicalNeighborVectors = activeNeighborShell(entry);
+    AnalysisSymmetryUtils::generateSymmetryPermutations(
+        canonicalNeighborVectors,
+        entry.coordinationNumber,
+        canonicalNeighborVectors,
+        symmetries
+    );
+    AnalysisSymmetryUtils::retainProperRotations(symmetries);
+    return symmetries;
 }
 
 std::vector<std::filesystem::path> normalizeSearchRoots(std::vector<std::filesystem::path> roots){
@@ -203,7 +187,6 @@ CrystalTopologyEntry parseTopologyEntry(const std::filesystem::path& filePath){
     entry.name = document["name"].as<std::string>();
     entry.coordinationNumber = document["coordination_number"].as<int>();
     entry.neighborVectors = parseVectorList(document["neighbor_vectors"]);
-    entry.symmetries = parseSymmetryPermutations(document["symmetry_permutations"], entry.coordinationNumber);
 
     if(entry.name.empty()){
         throw std::runtime_error("Topology name cannot be empty.");
@@ -214,8 +197,9 @@ CrystalTopologyEntry parseTopologyEntry(const std::filesystem::path& filePath){
     if(static_cast<int>(entry.neighborVectors.size()) < entry.coordinationNumber){
         throw std::runtime_error("neighbor_vectors count is smaller than coordination_number.");
     }
+    entry.symmetries = generateSymmetryPermutations(entry);
     if(entry.symmetries.empty()){
-        throw std::runtime_error("symmetry_permutations must be explicitly defined.");
+        throw std::runtime_error("Failed to derive symmetry permutations from neighbor_vectors.");
     }
 
     return entry;

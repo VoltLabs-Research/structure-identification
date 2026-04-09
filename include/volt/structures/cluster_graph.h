@@ -20,7 +20,7 @@ public:
 		return _clusterTransitions; 
 	}
 
-	Cluster* createCluster(int structureType, int id = -1);
+	Cluster* createCluster(int structureType, std::string topologyName = {}, int id = -1);
 	Cluster* findCluster(int id) const;
 
 	ClusterTransition* createClusterTransition(Cluster* clusterA, Cluster* clusterB, const Matrix3& tm, int distance = 1);

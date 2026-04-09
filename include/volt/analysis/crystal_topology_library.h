@@ -2,9 +2,9 @@
 
 #include <volt/core/volt.h>
 #include <volt/structures/crystal_structure_types.h>
-#include <volt/structures/neighbor_bond_array.h>
 
 #include <array>
+#include <string_view>
 #include <vector>
 
 namespace Volt{
@@ -17,22 +17,19 @@ struct SharedCrystalSymmetryPermutation{
 
 struct SharedCrystalTopology{
     int coordinationNumber = 0;
-    std::vector<Vector3> latticeVectors;
-    NeighborBondArray neighborBonds;
+    std::vector<Vector3> neighborVectors;
     std::array<std::array<int, 2>, MAX_NEIGHBORS> commonNeighbors{};
-    Matrix3 primitiveCell = Matrix3::Zero();
-    Matrix3 primitiveCellInverse = Matrix3::Zero();
     std::vector<SharedCrystalSymmetryPermutation> symmetries;
 };
 
 struct AdaptedCrystalTopology{
     int coordinationNumber = 0;
-    std::vector<Vector3> latticeVectors;
+    std::vector<Vector3> neighborVectors;
     std::array<std::array<int, 2>, MAX_NEIGHBORS> commonNeighbors{};
     std::vector<SharedCrystalSymmetryPermutation> symmetries;
 };
 
-const SharedCrystalTopology* sharedCrystalTopology(int structureType);
+const SharedCrystalTopology* sharedCrystalTopology(std::string_view topologyName);
 int findClosestSharedCrystalSymmetryPermutation(
     const SharedCrystalTopology& topology,
     const Matrix3& rotation

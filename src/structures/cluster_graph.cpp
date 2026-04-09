@@ -8,7 +8,7 @@ namespace Volt{
 // between them. Transitions are connections that describe how one cluster's orientation
 // transform into another's.
 ClusterGraph::ClusterGraph() : _maximumClusterDistance(2){
-	createCluster(0, 0);
+	createCluster(0, {}, 0);
 }
 
 ClusterGraph::~ClusterGraph(){
@@ -26,14 +26,14 @@ ClusterGraph::ClusterGraph(const ClusterGraph& other){
 
 // Create a new cluster node with the given structure type and optional ID.
 // If no ID is provided, one is assigned sequentially.
-Cluster* ClusterGraph::createCluster(int structureType, int id){
+Cluster* ClusterGraph::createCluster(int structureType, std::string topologyName, int id){
     tbb::spin_mutex::scoped_lock lock(mutex);
 	if(id < 0){
 		id = clusters().size();
 		assert(id > 0);
 	}
 
-	Cluster* cluster = _clusterPool.construct(id, structureType);
+	Cluster* cluster = _clusterPool.construct(id, structureType, std::move(topologyName));
 	_clusters.push_back(cluster);
 
 	bool inserted = _clusterMap.insert({ id, cluster }).second;

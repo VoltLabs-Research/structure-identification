@@ -103,10 +103,10 @@ template<typename CanonicalVectorContainer, typename LatticeVectorContainer, typ
 void generateSymmetryPermutations(
     const CanonicalVectorContainer& canonicalVectors,
     int coordinationNumber,
-    const LatticeVectorContainer& latticeVectors,
+    const LatticeVectorContainer& neighborVectors,
     SymmetryContainer& symmetries
 ){
-    if(coordinationNumber == 0 || latticeVectors.empty()){
+    if(coordinationNumber == 0 || neighborVectors.empty()){
         return;
     }
 
@@ -115,9 +115,9 @@ void generateSymmetryPermutations(
     findNonCoplanarVectors(canonicalVectors, coordinationNumber, basisIndices, basis);
     const Matrix3 basisInverse = basis.inverse();
 
-    std::vector<int> permutation(latticeVectors.size());
+    std::vector<int> permutation(neighborVectors.size());
     std::iota(permutation.begin(), permutation.end(), 0);
-    std::vector<int> lastPermutation(latticeVectors.size(), -1);
+    std::vector<int> lastPermutation(neighborVectors.size(), -1);
 
     using SymmetryType = typename SymmetryContainer::value_type;
 
@@ -131,9 +131,9 @@ void generateSymmetryPermutations(
 
         if(changedFrom <= basisIndices[2]){
             Matrix3 transformedBasis = Matrix3::Zero();
-            transformedBasis.column(0) = latticeVectors[static_cast<std::size_t>(permutation[static_cast<std::size_t>(basisIndices[0])])];
-            transformedBasis.column(1) = latticeVectors[static_cast<std::size_t>(permutation[static_cast<std::size_t>(basisIndices[1])])];
-            transformedBasis.column(2) = latticeVectors[static_cast<std::size_t>(permutation[static_cast<std::size_t>(basisIndices[2])])];
+            transformedBasis.column(0) = neighborVectors[static_cast<std::size_t>(permutation[static_cast<std::size_t>(basisIndices[0])])];
+            transformedBasis.column(1) = neighborVectors[static_cast<std::size_t>(permutation[static_cast<std::size_t>(basisIndices[1])])];
+            transformedBasis.column(2) = neighborVectors[static_cast<std::size_t>(permutation[static_cast<std::size_t>(basisIndices[2])])];
             symmetry.transformation = transformedBasis * basisInverse;
 
             if(!symmetry.transformation.isOrthogonalMatrix()){
@@ -147,7 +147,7 @@ void generateSymmetryPermutations(
         int invalidFrom = changedFrom;
         for(; invalidFrom < coordinationNumber; ++invalidFrom){
             const Vector3 transformedVector = symmetry.transformation * canonicalVectors[static_cast<std::size_t>(invalidFrom)];
-            if(!transformedVector.equals(latticeVectors[static_cast<std::size_t>(permutation[static_cast<std::size_t>(invalidFrom)])])){
+            if(!transformedVector.equals(neighborVectors[static_cast<std::size_t>(permutation[static_cast<std::size_t>(invalidFrom)])])){
                 break;
             }
         }
@@ -213,6 +213,16 @@ void calculateSymmetryProducts(SymmetryContainer& symmetries){
             }
         }
     }
+}
+
+template<typename SymmetryContainer>
+void retainProperRotations(SymmetryContainer& symmetries){
+    symmetries.erase(
+        std::remove_if(symmetries.begin(), symmetries.end(), [](const auto& symmetry){
+            return symmetry.transformation.determinant() <= 0.0;
+        }),
+        symmetries.end()
+    );
 }
 
 template<typename SymmetryContainer>

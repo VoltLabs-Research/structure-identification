@@ -1,8 +1,10 @@
 #include <volt/analysis/cluster_graph_io.h>
-#include <volt/analysis/reconstructed_dump_utils.h>
 #include <volt/analysis/cluster_hierarchy_rebuilder.h>
+#include <volt/analysis/reconstructed_dump_utils.h>
+#include <volt/structures/crystal_topology_registry.h>
 
 #include <algorithm>
+#include <array>
 #include <fstream>
 #include <iomanip>
 #include <limits>
@@ -17,10 +19,11 @@ namespace ClusterGraphExportDetail{
 
 constexpr const char* kClustersSuffix = "_clusters.table";
 constexpr const char* kClusterTransitionsSuffix = "_cluster_transitions.table";
+constexpr const char* kUnknownTopologyToken = "-";
 
 struct ClusterRow{
     int clusterId = 0;
-    int structureType = 0;
+    std::string topologyName;
     Matrix3 orientation = Matrix3::Identity();
 };
 
@@ -145,7 +148,7 @@ bool requireColumnIndex(
     std::size_t& index,
     std::string* errorMessage
 ){
-    auto it = indices.find(columnName);
+    const auto it = indices.find(columnName);
     if(it == indices.end()){
         AnalysisDumpUtils::setError(errorMessage, "Missing required table column '" + columnName + "'");
         return false;
@@ -171,9 +174,9 @@ bool loadClustersTable(
     }
 
     std::size_t clusterIdIndex = 0;
-    std::size_t structureTypeIndex = 0;
+    std::size_t topologyNameIndex = 0;
     if(!requireColumnIndex(indices, "cluster_id", clusterIdIndex, errorMessage) ||
-       !requireColumnIndex(indices, "structure_type", structureTypeIndex, errorMessage)){
+       !requireColumnIndex(indices, "topology_name", topologyNameIndex, errorMessage)){
         return false;
     }
 
@@ -181,7 +184,7 @@ bool loadClustersTable(
     bool hasOrientationColumns = true;
     for(int row = 0; row < 3; ++row){
         for(int column = 0; column < 3; ++column){
-            auto it = indices.find("orientation_" + std::to_string(row) + std::to_string(column));
+            const auto it = indices.find("orientation_" + std::to_string(row) + std::to_string(column));
             if(it == indices.end()){
                 hasOrientationColumns = false;
                 break;
@@ -197,10 +200,17 @@ bool loadClustersTable(
     rows.reserve(rawRows.size());
     for(const auto& rawRow : rawRows){
         ClusterRow rowData;
-        if(!AnalysisDumpUtils::tryParseInt(rawRow[clusterIdIndex], rowData.clusterId) ||
-           !AnalysisDumpUtils::tryParseInt(rawRow[structureTypeIndex], rowData.structureType)){
-            AnalysisDumpUtils::setError(errorMessage, "Failed to parse integral values in clusters table");
+        if(!AnalysisDumpUtils::tryParseInt(rawRow[clusterIdIndex], rowData.clusterId)){
+            AnalysisDumpUtils::setError(errorMessage, "Failed to parse cluster_id in clusters table");
             return false;
+        }
+
+        rowData.topologyName = rawRow[topologyNameIndex];
+        if(rowData.topologyName == kUnknownTopologyToken){
+            rowData.topologyName.clear();
+        }
+        if(const CrystalTopologyEntry* topology = crystalTopologyByName(rowData.topologyName)){
+            rowData.topologyName = topology->name;
         }
 
         if(hasOrientationColumns){
@@ -318,7 +328,7 @@ bool rebuildClusterGraph(
             return false;
         }
 
-        Cluster* cluster = graph.createCluster(row.structureType, row.clusterId);
+        Cluster* cluster = graph.createCluster(0, row.topologyName, row.clusterId);
         cluster->orientation = row.orientation;
         cluster->predecessor = nullptr;
         cluster->parentTransition = nullptr;
@@ -370,7 +380,7 @@ bool writeClustersTable(
     }
 
     output << std::setprecision(std::numeric_limits<double>::max_digits10);
-    output << "cluster_id\tstructure_type";
+    output << "cluster_id\ttopology_name";
     for(int row = 0; row < 3; ++row){
         for(int column = 0; column < 3; ++column){
             output << "\torientation_" << row << column;
@@ -381,10 +391,9 @@ bool writeClustersTable(
     for(Cluster* cluster : sortedClusters(clusterGraph)){
         output
             << cluster->id
-            << '\t' << cluster->structure;
+            << '\t' << (cluster->topologyName.empty() ? kUnknownTopologyToken : cluster->topologyName);
         writeMatrixColumns(output, cluster->orientation);
-        output
-            << '\n';
+        output << '\n';
     }
 
     return output.good();
@@ -410,8 +419,7 @@ bool writeClusterTransitionsTable(
     }
     output << "\tdistance\n";
 
-    for(std::size_t transitionIndex = 0; transitionIndex < transitions.size(); ++transitionIndex){
-        const ClusterTransition* transition = transitions[transitionIndex];
+    for(const ClusterTransition* transition : transitions){
         output
             << transition->cluster1->id
             << '\t' << transition->cluster2->id;

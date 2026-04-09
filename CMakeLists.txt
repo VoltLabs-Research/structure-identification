@@ -38,6 +38,7 @@ find_package(TBB REQUIRED)
 find_package(Boost REQUIRED)
 find_package(spdlog REQUIRED)
 find_package(nlohmann_json REQUIRED)
+find_package(yaml-cpp REQUIRED)
 
 set(STRUCTURE_IDENTIFICATION_BOOST_TARGET "")
 if(TARGET Boost::headers)
@@ -57,19 +58,47 @@ set(LIBRARY_SOURCES
 	${CMAKE_SOURCE_DIR}/src/analysis/reconstructed_dump_utils.cpp
 	${CMAKE_SOURCE_DIR}/src/analysis/cluster_graph_io.cpp
 	${CMAKE_SOURCE_DIR}/src/analysis/cluster_graph_builder.cpp
+	${CMAKE_SOURCE_DIR}/src/analysis/orientation_cluster_rule_provider.cpp
 	${CMAKE_SOURCE_DIR}/src/analysis/crystal_topology_library.cpp
+	${CMAKE_SOURCE_DIR}/src/analysis/reconstructed_state_canonicalizer.cpp
 	${CMAKE_SOURCE_DIR}/src/analysis/structure_analysis.cpp
 	${CMAKE_SOURCE_DIR}/src/core/reconstructed_structure.cpp
+	${CMAKE_SOURCE_DIR}/src/structures/crystal_topology_registry.cpp
 	${CMAKE_SOURCE_DIR}/src/structures/cluster_graph.cpp
 )
 
 add_library(${PROJECT_NAME} STATIC ${LIBRARY_SOURCES})
 set_target_properties(${PROJECT_NAME} PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
+set(LOCAL_CORETOOLKIT_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/../../tools/CoreToolkit/include")
 target_include_directories(${PROJECT_NAME} PUBLIC
 	${CMAKE_SOURCE_DIR}/include
 )
+if(EXISTS "${LOCAL_CORETOOLKIT_INCLUDE_DIR}")
+	target_include_directories(${PROJECT_NAME} BEFORE PUBLIC
+		${LOCAL_CORETOOLKIT_INCLUDE_DIR}
+	)
+endif()
+if(TARGET yaml-cpp::yaml-cpp)
+	get_target_property(YAML_CPP_INCLUDE_DIRS yaml-cpp::yaml-cpp INTERFACE_INCLUDE_DIRECTORIES)
+	set(YAML_CPP_INCLUDE_FALLBACK "")
+	if(DEFINED yaml-cpp_PACKAGE_FOLDER_RELEASE AND EXISTS "${yaml-cpp_PACKAGE_FOLDER_RELEASE}/include")
+		set(YAML_CPP_INCLUDE_FALLBACK "${yaml-cpp_PACKAGE_FOLDER_RELEASE}/include")
+	endif()
+	if(YAML_CPP_INCLUDE_DIRS OR YAML_CPP_INCLUDE_FALLBACK)
+		target_include_directories(${PROJECT_NAME} SYSTEM PUBLIC
+			${YAML_CPP_INCLUDE_DIRS}
+			${YAML_CPP_INCLUDE_FALLBACK}
+		)
+	endif()
+endif()
 target_precompile_headers(${PROJECT_NAME} PRIVATE <volt/core/volt.h>)
+
+if(EXISTS "${CMAKE_SOURCE_DIR}/../OpenDXA/lattices")
+	target_compile_definitions(${PROJECT_NAME} PUBLIC
+		VOLT_OPENDXA_LATTICE_SOURCE_DIR="${CMAKE_SOURCE_DIR}/../OpenDXA/lattices"
+	)
+endif()
 
 target_link_libraries(${PROJECT_NAME} PUBLIC
 	${STRUCTURE_IDENTIFICATION_BOOST_TARGET}
@@ -77,6 +106,7 @@ target_link_libraries(${PROJECT_NAME} PUBLIC
 	coretoolkit::coretoolkit
 	spdlog::spdlog
 	nlohmann_json::nlohmann_json
+	yaml-cpp::yaml-cpp
 )
 
 install(TARGETS ${PROJECT_NAME} DESTINATION lib)

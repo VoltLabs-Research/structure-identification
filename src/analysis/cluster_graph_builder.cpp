@@ -40,6 +40,13 @@ int ClusterBuilder::selectInitialSymmetryPermutation(int atomIndex, int structur
     );
 
     const int symmetryCount = _sa.symmetryPermutationCount(structureType);
+    const int existingSymmetry = _context.atomSymmetryPermutations->getInt(static_cast<std::size_t>(atomIndex));
+    if(existingSymmetry >= 0 &&
+       existingSymmetry < symmetryCount &&
+       symmetryAllowed(allowedMask, existingSymmetry)){
+        return existingSymmetry;
+    }
+
     for(int symmetryIndex = 0; symmetryIndex < symmetryCount; ++symmetryIndex){
         if(symmetryAllowed(allowedMask, symmetryIndex)){
             return symmetryIndex;
@@ -65,6 +72,7 @@ void ClusterBuilder::dissolveSmallClusters(int minClusterSize){
         }
 
         cluster->structure = LATTICE_OTHER;
+        cluster->topologyName.clear();
     }
 }
 
@@ -540,7 +548,10 @@ void ClusterBuilder::formSuperClusters(){
 }
 
 Cluster* ClusterBuilder::startNew(int atomIndex, int structureType){
-    Cluster* cluster = _sa.clusterGraph().createCluster(structureType);
+    Cluster* cluster = _sa.clusterGraph().createCluster(
+        structureType,
+        std::string(_sa.topologyName(structureType))
+    );
     assert(cluster->id > 0);
 
     cluster->atomCount = 1;

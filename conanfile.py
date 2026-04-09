@@ -15,6 +15,7 @@ class StructureIdentificationConan(ConanFile):
         "coretoolkit/1.0.0",
         "spdlog/1.14.1",
         "nlohmann_json/3.11.3",
+        "yaml-cpp/0.8.0",
     )
     exports_sources = "CMakeLists.txt", "include/*", "src/*"
 
@@ -45,4 +46,5 @@ class StructureIdentificationConan(ConanFile):
             "coretoolkit::coretoolkit",
             "nlohmann_json::nlohmann_json",
             "spdlog::spdlog",
+            "yaml-cpp::yaml-cpp",
         ]

@@ -262,7 +262,11 @@ int StructureAnalysis::symmetryInverseProduct(int structureType, int symmetryInd
 }
 
 const Vector3& StructureAnalysis::latticeVector(int structureType, int latticeVectorIndex) const{
-    return requireCrystalInfo(_crystalInfoProvider).latticeVector(structureType, latticeVectorIndex);
+	return requireCrystalInfo(_crystalInfoProvider).latticeVector(structureType, latticeVectorIndex);
+}
+
+std::string_view StructureAnalysis::topologyName(int structureType) const{
+	return requireCrystalInfo(_crystalInfoProvider).topologyName(structureType);
 }
 
 const Vector3& StructureAnalysis::neighborLatticeVector(int centralAtomIndex, int neighborIndex) const{

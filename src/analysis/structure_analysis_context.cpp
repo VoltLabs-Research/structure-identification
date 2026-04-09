@@ -4,9 +4,6 @@
 #include <volt/structures/crystal_structure_types.h>
 
 #include <algorithm>
-#include <iomanip>
-#include <limits>
-#include <sstream>
 #include <stdexcept>
 #include <string>
 
@@ -55,39 +52,6 @@ std::shared_ptr<ParticleProperty> makeNeighborIndicesProperty(const AnalysisCont
     }
 
     return property;
-}
-
-std::shared_ptr<ParticleProperty> makeExportedNeighborCountsProperty(const AnalysisContext& context){
-    auto property = std::make_shared<ParticleProperty>(
-        context.atomCount(),
-        DataType::Int,
-        1,
-        0,
-        true
-    );
-
-    if(!context.neighborCounts){
-        return property;
-    }
-
-    for(std::size_t atomIndex = 0; atomIndex < context.atomCount(); ++atomIndex){
-        property->setInt(atomIndex, context.neighborCounts->getInt(static_cast<int>(atomIndex)));
-    }
-
-    return property;
-}
-
-std::string formatDouble(double value){
-    std::ostringstream stream;
-    stream << std::setprecision(std::numeric_limits<double>::max_digits10) << value;
-    return stream.str();
-}
-
-std::vector<LammpsParser::ExtraHeader> makeExtraHeaders(const AnalysisContext& context){
-    return {{
-        AnalysisDumpUtils::kMaximumNeighborDistanceHeader,
-        formatDouble(context.maximumNeighborDistance)
-    }};
 }
 
 std::shared_ptr<ParticleProperty> makeNeighborLatticeVectorProperty(
@@ -194,7 +158,6 @@ AnalysisContext::AnalysisContext(
 
 AnalysisContext::ExportedContext AnalysisContext::exportContext(const StructureAnalysis* analysis) const{
     ExportedContext exported;
-    exported.headers = makeExtraHeaders(*this);
     auto& columns = exported.columns;
     auto& ownedProperties = exported.ownedProperties;
     const std::size_t count = atomCount();
@@ -207,9 +170,6 @@ AnalysisContext::ExportedContext AnalysisContext::exportContext(const StructureA
         LammpsParser::writeColumn(columns, { name }, exportedProperty);
     };
     writeIntColumn("cluster_id", atomClusters, 0);
-    auto exportedNeighborCounts = makeExportedNeighborCountsProperty(*this);
-    ownedProperties.push_back(exportedNeighborCounts);
-    LammpsParser::writeColumn(columns, { "neighbor_counts" }, exportedNeighborCounts);
 
     auto neighborIndicesProperty = makeNeighborIndicesProperty(*this);
     ownedProperties.push_back(neighborIndicesProperty);

@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <vector>
 
 namespace Volt{
@@ -19,34 +20,11 @@ bool ReconstructedStructureContext::loadFromFrame(
     ReconstructedStructureContext& context,
     std::string* errorMessage
 ){
-    std::string text;
-    if(!AnalysisDumpUtils::extractHeaderValue(
-        frame,
-        AnalysisDumpUtils::kMaximumNeighborDistanceHeader,
-        text,
-        errorMessage
-    )){
-        return false;
-    }
-    if(!AnalysisDumpUtils::tryParseDouble(text, context.maximumNeighborDistance)){
-        AnalysisDumpUtils::setError(
-            errorMessage,
-            "Failed to parse dump header '" + std::string(AnalysisDumpUtils::kMaximumNeighborDistanceHeader) + "'"
-        );
-        return false;
-    }
-
     std::vector<int> clusterIds;
     if(!AnalysisDumpUtils::extractIntegralColumn(frame, "cluster_id", clusterIds, errorMessage)){
         return false;
     }
     context.atomClusters = AnalysisDumpUtils::makeIntProperty(clusterIds);
-
-    std::vector<int> neighborCounts;
-    if(!AnalysisDumpUtils::extractIntegralColumn(frame, "neighbor_counts", neighborCounts, errorMessage)){
-        return false;
-    }
-    context.neighborCounts = AnalysisDumpUtils::makeIntProperty(neighborCounts);
 
     std::vector<std::vector<int>> expandedNeighborSlots(static_cast<std::size_t>(MAX_NEIGHBORS));
     for(int neighborSlot = 0; neighborSlot < MAX_NEIGHBORS; ++neighborSlot){
@@ -60,24 +38,37 @@ bool ReconstructedStructureContext::loadFromFrame(
         }
     }
 
+    std::vector<int> neighborCounts(static_cast<std::size_t>(frame.natoms), 0);
     std::vector<int> compactOffsets(static_cast<std::size_t>(frame.natoms) + 1, 0);
     int totalNeighborEntries = 0;
     for(int atomIndex = 0; atomIndex < frame.natoms; ++atomIndex){
-        const int count = neighborCounts[static_cast<std::size_t>(atomIndex)];
-        if(count < 0 || count > MAX_NEIGHBORS){
-            AnalysisDumpUtils::setError(
-                errorMessage,
-                "neighbor_counts contains invalid value " + std::to_string(count) +
-                " for atom index " + std::to_string(atomIndex)
-            );
-            return false;
+        int count = 0;
+        bool foundGap = false;
+        for(int neighborSlot = 0; neighborSlot < MAX_NEIGHBORS; ++neighborSlot){
+            const int neighbor = expandedNeighborSlots[static_cast<std::size_t>(neighborSlot)][static_cast<std::size_t>(atomIndex)];
+            if(neighbor < 0){
+                foundGap = true;
+                continue;
+            }
+            if(foundGap){
+                AnalysisDumpUtils::setError(
+                    errorMessage,
+                    AnalysisDumpUtils::neighborIndexName(neighborSlot) +
+                    " contains a non-negative entry after an empty neighbor slot for atom index " +
+                    std::to_string(atomIndex)
+                );
+                return false;
+            }
+            ++count;
         }
+        neighborCounts[static_cast<std::size_t>(atomIndex)] = count;
 
         compactOffsets[static_cast<std::size_t>(atomIndex)] = totalNeighborEntries;
         totalNeighborEntries += count;
     }
     compactOffsets[static_cast<std::size_t>(frame.natoms)] = totalNeighborEntries;
 
+    context.neighborCounts = AnalysisDumpUtils::makeIntProperty(neighborCounts);
     context.neighborOffsets = AnalysisDumpUtils::makeIntProperty(compactOffsets);
 
     auto compactNeighborIndices = std::make_shared<ParticleProperty>(
@@ -101,6 +92,18 @@ bool ReconstructedStructureContext::loadFromFrame(
         }
     }
     context.neighborIndices = compactNeighborIndices;
+    context.maximumNeighborDistance = 0.0;
+    for(int atomIndex = 0; atomIndex < frame.natoms; ++atomIndex){
+        const int count = neighborCounts[static_cast<std::size_t>(atomIndex)];
+        for(int neighborSlot = 0; neighborSlot < count; ++neighborSlot){
+            const int neighbor = compactData[compactOffsets[static_cast<std::size_t>(atomIndex)] + neighborSlot];
+            const Vector3 delta = context.simCell.wrapVector(
+                frame.positions[static_cast<std::size_t>(neighbor)] -
+                frame.positions[static_cast<std::size_t>(atomIndex)]
+            );
+            context.maximumNeighborDistance = std::max(context.maximumNeighborDistance, delta.length());
+        }
+    }
 
     const std::array<char, 3> axes = { 'x', 'y', 'z' };
     std::array<std::vector<std::vector<double>>, 3> neighborLattice;

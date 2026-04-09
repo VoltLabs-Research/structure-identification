@@ -98,22 +98,6 @@ std::shared_ptr<ParticleProperty> makeIntProperty(const std::vector<int>& values
     return property;
 }
 
-bool extractHeaderValue(
-    const LammpsParser::Frame& frame,
-    const std::string& headerName,
-    std::string& value,
-    std::string* errorMessage
-){
-    const std::string* header = frame.findHeaderProperty(headerName);
-    if(!header){
-        setError(errorMessage, "Missing required dump header '" + headerName + "'");
-        return false;
-    }
-
-    value = *header;
-    return true;
-}
-
 bool extractIntegralColumn(
     const LammpsParser::Frame& frame,
     const std::string& columnName,

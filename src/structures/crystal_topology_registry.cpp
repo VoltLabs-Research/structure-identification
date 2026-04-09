@@ -8,7 +8,6 @@
 #include <array>
 #include <cctype>
 #include <cmath>
-#include <cstdlib>
 #include <filesystem>
 #include <memory>
 #include <mutex>
@@ -103,12 +102,6 @@ std::vector<std::filesystem::path> normalizeSearchRoots(std::vector<std::filesys
 }
 
 std::vector<std::filesystem::path> defaultTopologySearchRoots(){
-    if(const char* envRoot = std::getenv("VOLT_LATTICE_DIR")){
-        if(*envRoot != '\0'){
-            return normalizeSearchRoots({std::filesystem::path(envRoot)});
-        }
-    }
-
     std::vector<std::filesystem::path> roots;
 
 #ifdef VOLT_OPENDXA_LATTICE_SOURCE_DIR

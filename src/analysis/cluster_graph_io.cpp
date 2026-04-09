@@ -1,5 +1,6 @@
 #include <volt/analysis/cluster_graph_io.h>
 #include <volt/analysis/cluster_hierarchy_rebuilder.h>
+#include <volt/analysis/crystal_topology_library.h>
 #include <volt/analysis/reconstructed_dump_utils.h>
 #include <volt/structures/crystal_topology_registry.h>
 
@@ -59,34 +60,107 @@ std::vector<Cluster*> sortedClusters(const ClusterGraph& clusterGraph){
     return clusters;
 }
 
-std::vector<ClusterTransition*> collectDirectedTransitions(const ClusterGraph& clusterGraph){
+std::vector<ClusterTransition*> collectExportedTransitions(const ClusterGraph& clusterGraph){
     std::vector<ClusterTransition*> transitions;
-    std::unordered_map<const ClusterTransition*, int> seen;
+    transitions.reserve(clusterGraph.clusterTransitions().size());
 
     for(Cluster* cluster : sortedClusters(clusterGraph)){
         for(ClusterTransition* transition = cluster->transitions; transition; transition = transition->next){
             if(!transition || !transition->cluster1 || !transition->cluster2){
                 continue;
             }
+            if(transition->distance != 1){
+                continue;
+            }
             if(transition->cluster1->id == 0 || transition->cluster2->id == 0){
                 continue;
             }
-            if(seen.emplace(transition, static_cast<int>(seen.size())).second){
-                transitions.push_back(transition);
+            if(transition->cluster1->id >= transition->cluster2->id){
+                continue;
             }
+            transitions.push_back(transition);
         }
     }
 
+    std::sort(transitions.begin(), transitions.end(), [](const ClusterTransition* left, const ClusterTransition* right){
+        if(left->cluster1->id != right->cluster1->id){
+            return left->cluster1->id < right->cluster1->id;
+        }
+        return left->cluster2->id < right->cluster2->id;
+    });
+
     return transitions;
+}
+
+bool isTopologySymmetryEquivalent(std::string_view topologyName, const Matrix3& misorientation){
+    const SharedCrystalTopology* topology = sharedCrystalTopology(topologyName);
+    if(!topology){
+        return false;
+    }
+
+    for(const auto& symmetry : topology->symmetries){
+        if(symmetry.transformation.equals(misorientation, 1e-6)){
+            return true;
+        }
+    }
+    return false;
 }
 
 void rebuildParentHierarchy(StructureAnalysis& structureAnalysis){
     ClusterGraph& graph = structureAnalysis.clusterGraph();
     std::vector<ClusterTransition*> superClusterTransitions;
     superClusterTransitions.reserve(graph.clusterTransitions().size());
-    for(ClusterTransition* transition : graph.clusterTransitions()){
-        if(transition && transition->distance == 2){
-            superClusterTransitions.push_back(transition);
+
+    for(Cluster* centerCluster : graph.clusters()){
+        if(!centerCluster || centerCluster->id == 0){
+            continue;
+        }
+
+        std::vector<ClusterTransition*> directTransitions;
+        for(ClusterTransition* transition = centerCluster->transitions; transition; transition = transition->next){
+            if(!transition || !transition->cluster2 || transition->distance != 1){
+                continue;
+            }
+            if(transition->cluster2->id == 0 || transition->cluster2 == centerCluster){
+                continue;
+            }
+            if(transition->cluster2->topologyName.empty()){
+                continue;
+            }
+            directTransitions.push_back(transition);
+        }
+
+        for(std::size_t firstIndex = 0; firstIndex < directTransitions.size(); ++firstIndex){
+            ClusterTransition* first = directTransitions[firstIndex];
+            for(std::size_t secondIndex = firstIndex + 1; secondIndex < directTransitions.size(); ++secondIndex){
+                ClusterTransition* second = directTransitions[secondIndex];
+                if(first->cluster2 == second->cluster2){
+                    continue;
+                }
+                if(first->cluster2->topologyName != second->cluster2->topologyName){
+                    continue;
+                }
+                if(centerCluster->topologyName == first->cluster2->topologyName){
+                    continue;
+                }
+
+                const Matrix3 misorientation = second->tm * first->reverse->tm;
+                if(!isTopologySymmetryEquivalent(first->cluster2->topologyName, misorientation)){
+                    continue;
+                }
+
+                ClusterTransition* superTransition = graph.createClusterTransition(
+                    first->cluster2,
+                    second->cluster2,
+                    misorientation,
+                    2
+                );
+                if(superTransition &&
+                   std::find(superClusterTransitions.begin(), superClusterTransitions.end(), superTransition) ==
+                       superClusterTransitions.end()){
+                    superClusterTransitions.push_back(superTransition);
+                }
+            }
         }
     }
     ClusterHierarchyUtils::rebuildParentHierarchy(structureAnalysis, superClusterTransitions);
@@ -253,12 +327,14 @@ bool loadTransitionsTable(
 
     std::size_t cluster1Index = 0;
     std::size_t cluster2Index = 0;
-    std::size_t distanceIndex = 0;
     if(!requireColumnIndex(indices, "cluster1_id", cluster1Index, errorMessage) ||
-       !requireColumnIndex(indices, "cluster2_id", cluster2Index, errorMessage) ||
-       !requireColumnIndex(indices, "distance", distanceIndex, errorMessage)){
+       !requireColumnIndex(indices, "cluster2_id", cluster2Index, errorMessage)){
         return false;
     }
+
+    const auto distanceIt = indices.find("distance");
+    const bool hasDistanceColumn = distanceIt != indices.end();
+    const std::size_t distanceIndex = hasDistanceColumn ? distanceIt->second : 0;
 
     std::array<std::size_t, 9> tmIndices{};
     for(int row = 0; row < 3; ++row){
@@ -279,9 +355,13 @@ bool loadTransitionsTable(
     for(const auto& rawRow : rawRows){
         TransitionRow rowData;
         if(!AnalysisDumpUtils::tryParseInt(rawRow[cluster1Index], rowData.cluster1Id) ||
-           !AnalysisDumpUtils::tryParseInt(rawRow[cluster2Index], rowData.cluster2Id) ||
-           !AnalysisDumpUtils::tryParseInt(rawRow[distanceIndex], rowData.distance)){
+           !AnalysisDumpUtils::tryParseInt(rawRow[cluster2Index], rowData.cluster2Id)){
             AnalysisDumpUtils::setError(errorMessage, "Failed to parse integral values in cluster transitions table");
+            return false;
+        }
+        if(hasDistanceColumn &&
+           !AnalysisDumpUtils::tryParseInt(rawRow[distanceIndex], rowData.distance)){
+            AnalysisDumpUtils::setError(errorMessage, "Failed to parse distance in cluster transitions table");
             return false;
         }
 
@@ -334,6 +414,7 @@ bool rebuildClusterGraph(
         cluster->parentTransition = nullptr;
         cluster->rank = 0;
         cluster->transitions = nullptr;
+        graph.createSelfTransition(cluster);
     }
 
     std::vector<TransitionRow> sortedTransitionRows = transitionRows;
@@ -360,7 +441,6 @@ bool rebuildClusterGraph(
                 AnalysisDumpUtils::setError(errorMessage, "Self cluster transitions must use the identity matrix");
                 return false;
             }
-            graph.createSelfTransition(cluster1);
             continue;
         }
 
@@ -408,7 +488,7 @@ bool writeClusterTransitionsTable(
         return false;
     }
 
-    const std::vector<ClusterTransition*> transitions = collectDirectedTransitions(clusterGraph);
+    const std::vector<ClusterTransition*> transitions = collectExportedTransitions(clusterGraph);
 
     output << std::setprecision(std::numeric_limits<double>::max_digits10);
     output << "cluster1_id\tcluster2_id";
@@ -417,16 +497,14 @@ bool writeClusterTransitionsTable(
             output << "\ttm_" << row << column;
         }
     }
-    output << "\tdistance\n";
+    output << '\n';
 
     for(const ClusterTransition* transition : transitions){
         output
             << transition->cluster1->id
             << '\t' << transition->cluster2->id;
         writeMatrixColumns(output, transition->tm);
-        output
-            << '\t' << transition->distance
-            << '\n';
+        output << '\n';
     }
 
     return output.good();

@@ -169,6 +169,22 @@ AnalysisContext::ExportedContext AnalysisContext::exportContext(const StructureA
         }
         LammpsParser::writeColumn(columns, { name }, exportedProperty);
     };
+    auto writeRawIntColumn = [&](const char* name, const ParticleProperty* property, int fillValue){
+        if(!property){
+            writeIntColumn(name, nullptr, fillValue);
+            return;
+        }
+
+        auto exportedProperty = std::make_shared<ParticleProperty>(count, DataType::Int, 1, 0, true);
+        std::copy(
+            property->constDataInt(),
+            property->constDataInt() + count,
+            exportedProperty->dataInt()
+        );
+        ownedProperties.push_back(exportedProperty);
+        LammpsParser::writeColumn(columns, { name }, exportedProperty);
+    };
+    writeRawIntColumn("structure_type", structureTypes, LATTICE_OTHER);
     writeIntColumn("cluster_id", atomClusters, 0);
 
     auto neighborIndicesProperty = makeNeighborIndicesProperty(*this);

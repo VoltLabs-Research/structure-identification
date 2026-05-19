@@ -17,7 +17,6 @@ class StructureContext{
 public:
     ParticleProperty* positions;
     ParticleProperty* structureTypes;
-    ParticleProperty* particleSelection;
 
     double maximumNeighborDistance;
     std::shared_ptr<ParticleProperty> neighborOffsets;
@@ -35,7 +34,6 @@ public:
         ParticleProperty* pos,
         const SimulationCell& cell,
         LatticeStructureType crystalType = LATTICE_OTHER,
-        ParticleProperty* selection = nullptr,
         ParticleProperty* outputStructures = nullptr,
         std::vector<Matrix3>&& preferredOrientations = {}
     );
@@ -66,7 +64,6 @@ public:
         ParticleProperty* pos,
         const SimulationCell& cell,
         LatticeStructureType crystalType,
-        ParticleProperty* selection,
         ParticleProperty* outputStructures,
         std::vector<Matrix3>&& preferredOrientations
     );

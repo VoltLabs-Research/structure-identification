@@ -2,6 +2,10 @@
 build/
 build-local/
 cmake-build-*/
+.audit-build/
+dist/
+artifacts/
+.ci-install/
 
 # CMake / Ninja artifacts
 CMakeFiles/
@@ -26,6 +30,7 @@ Makefile
 *.ilk
 *.exp
 *.manifest
+*.node
 
 # Package / cache directories
 .cache/
@@ -33,6 +38,7 @@ Makefile
 .conan2/
 .pytest_cache/
 __pycache__/
+node_modules/
 *.py[cod]
 
 # IDE / editor / OS files
@@ -48,3 +54,5 @@ Thumbs.db
 # Generated analysis outputs
 output/
 *.log
+*.tar.zst
+*.sha256

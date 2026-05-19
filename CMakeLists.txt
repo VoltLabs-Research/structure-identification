@@ -55,6 +55,7 @@ endif()
 
 set(LIBRARY_SOURCES
 	${CMAKE_SOURCE_DIR}/src/analysis/structure_analysis_context.cpp
+	${CMAKE_SOURCE_DIR}/src/analysis/structure_identification_export.cpp
 	${CMAKE_SOURCE_DIR}/src/analysis/reconstructed_dump_utils.cpp
 	${CMAKE_SOURCE_DIR}/src/analysis/cluster_graph_io.cpp
 	${CMAKE_SOURCE_DIR}/src/analysis/cluster_graph_builder.cpp
@@ -70,28 +71,7 @@ set(LIBRARY_SOURCES
 add_library(${PROJECT_NAME} STATIC ${LIBRARY_SOURCES})
 set_target_properties(${PROJECT_NAME} PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
-set(LOCAL_CORETOOLKIT_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/../../tools/CoreToolkit/include")
-target_include_directories(${PROJECT_NAME} PUBLIC
-	${CMAKE_SOURCE_DIR}/include
-)
-if(EXISTS "${LOCAL_CORETOOLKIT_INCLUDE_DIR}")
-	target_include_directories(${PROJECT_NAME} BEFORE PUBLIC
-		${LOCAL_CORETOOLKIT_INCLUDE_DIR}
-	)
-endif()
-if(TARGET yaml-cpp::yaml-cpp)
-	get_target_property(YAML_CPP_INCLUDE_DIRS yaml-cpp::yaml-cpp INTERFACE_INCLUDE_DIRECTORIES)
-	set(YAML_CPP_INCLUDE_FALLBACK "")
-	if(DEFINED yaml-cpp_PACKAGE_FOLDER_RELEASE AND EXISTS "${yaml-cpp_PACKAGE_FOLDER_RELEASE}/include")
-		set(YAML_CPP_INCLUDE_FALLBACK "${yaml-cpp_PACKAGE_FOLDER_RELEASE}/include")
-	endif()
-	if(YAML_CPP_INCLUDE_DIRS OR YAML_CPP_INCLUDE_FALLBACK)
-		target_include_directories(${PROJECT_NAME} SYSTEM PUBLIC
-			${YAML_CPP_INCLUDE_DIRS}
-			${YAML_CPP_INCLUDE_FALLBACK}
-		)
-	endif()
-endif()
+target_include_directories(${PROJECT_NAME} PUBLIC ${CMAKE_SOURCE_DIR}/include)
 target_precompile_headers(${PROJECT_NAME} PRIVATE <volt/core/volt.h>)
 
 if(EXISTS "${CMAKE_SOURCE_DIR}/../OpenDXA/lattices")

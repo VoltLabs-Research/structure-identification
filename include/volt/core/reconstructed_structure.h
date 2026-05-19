@@ -22,6 +22,9 @@ public:
         ReconstructedStructureContext& context,
         std::string* errorMessage = nullptr
     );
+
+private:
+    std::shared_ptr<ParticleProperty> _ownedStructureTypes;
 };
 
 class ReconstructedStructureLoader{

@@ -29,7 +29,6 @@ struct PreparedAnalysisSession{
             positions.get(),
             frame.simulationCell,
             inputCrystalStructure,
-            nullptr,
             structureTypes.get(),
             std::vector<Matrix3>{Matrix3::Identity()}
         ){}

@@ -98,13 +98,11 @@ StructureContext::StructureContext(
     ParticleProperty* pos,
     const SimulationCell& cell,
     LatticeStructureType crystalType,
-    ParticleProperty* selection,
     ParticleProperty* outputStructures,
     std::vector<Matrix3>&& preferredOrientations
 ) : 
     positions(pos),
     structureTypes(outputStructures),
-    particleSelection(selection),
     maximumNeighborDistance(0.0),
     simCell(cell),
     inputCrystalType(crystalType),
@@ -121,7 +119,6 @@ AnalysisContext::AnalysisContext(
     ParticleProperty* pos,
     const SimulationCell& cell,
     LatticeStructureType crystalType,
-    ParticleProperty* selection,
     ParticleProperty* outputStructures,
     std::vector<Matrix3>&& preferredOrientations
 ) :
@@ -129,7 +126,6 @@ AnalysisContext::AnalysisContext(
         pos,
         cell,
         crystalType,
-        selection,
         outputStructures,
         std::move(preferredOrientations)
     )

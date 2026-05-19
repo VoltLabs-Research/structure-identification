@@ -20,6 +20,15 @@ bool ReconstructedStructureContext::loadFromFrame(
     ReconstructedStructureContext& context,
     std::string* errorMessage
 ){
+    if(frame.findAtomProperty("structure_type")){
+        std::vector<int> structureTypes;
+        if(!AnalysisDumpUtils::extractIntegralColumn(frame, "structure_type", structureTypes, errorMessage)){
+            return false;
+        }
+        context._ownedStructureTypes = AnalysisDumpUtils::makeIntProperty(structureTypes);
+        context.structureTypes = context._ownedStructureTypes.get();
+    }
+
     std::vector<int> clusterIds;
     if(!AnalysisDumpUtils::extractIntegralColumn(frame, "cluster_id", clusterIds, errorMessage)){
         return false;

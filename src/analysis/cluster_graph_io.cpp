@@ -550,11 +550,11 @@ bool importClusterGraph(
     std::string* errorMessage
 ){
     if(paths.clustersTablePath.empty()){
-        AnalysisDumpUtils::setError(errorMessage, "Missing --clusters-table input");
+        AnalysisDumpUtils::setError(errorMessage, "Missing --clusters_table input");
         return false;
     }
     if(paths.clusterTransitionsTablePath.empty()){
-        AnalysisDumpUtils::setError(errorMessage, "Missing --clusters-transitions input");
+        AnalysisDumpUtils::setError(errorMessage, "Missing --clusters_transitions input");
         return false;
     }
 

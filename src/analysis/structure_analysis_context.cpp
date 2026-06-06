@@ -7,6 +7,9 @@
 #include <stdexcept>
 #include <string>
 
+#include <tbb/blocked_range.h>
+#include <tbb/parallel_for.h>
+
 namespace Volt{
 
 namespace AnalysisContextDetail{
@@ -36,20 +39,22 @@ std::shared_ptr<ParticleProperty> makeNeighborIndicesProperty(const AnalysisCont
     const std::size_t totalNeighborEntries = context.neighborIndices->size();
     int* destination = property->dataInt();
 
-    for(std::size_t atomIndex = 0; atomIndex < atomCount; ++atomIndex){
-        const int count = std::max(0, std::min(counts[atomIndex], static_cast<int>(MAX_NEIGHBORS)));
-        const int start = offsets[atomIndex];
-        if(start < 0){
-            continue;
-        }
-        for(int neighborSlot = 0; neighborSlot < count; ++neighborSlot){
-            const std::size_t sourceIndex = static_cast<std::size_t>(start + neighborSlot);
-            if(sourceIndex >= totalNeighborEntries){
-                break;
+    tbb::parallel_for(tbb::blocked_range<std::size_t>(0, atomCount), [&](const tbb::blocked_range<std::size_t>& range){
+        for(std::size_t atomIndex = range.begin(); atomIndex < range.end(); ++atomIndex){
+            const int count = std::max(0, std::min(counts[atomIndex], static_cast<int>(MAX_NEIGHBORS)));
+            const int start = offsets[atomIndex];
+            if(start < 0){
+                continue;
             }
-            destination[atomIndex * MAX_NEIGHBORS + neighborSlot] = indices[sourceIndex];
+            for(int neighborSlot = 0; neighborSlot < count; ++neighborSlot){
+                const std::size_t sourceIndex = static_cast<std::size_t>(start + neighborSlot);
+                if(sourceIndex >= totalNeighborEntries){
+                    break;
+                }
+                destination[atomIndex * MAX_NEIGHBORS + neighborSlot] = indices[sourceIndex];
+            }
         }
-    }
+    });
 
     return property;
 }
@@ -65,29 +70,33 @@ std::shared_ptr<ParticleProperty> makeNeighborLatticeVectorProperty(
         0.0,
         true
     );
+    auto* data = property->dataDouble();
+    const int* structureTypes = context.structureTypes->constDataInt();
+    const int* neighborCounts = context.neighborCounts ? context.neighborCounts->constDataInt() : nullptr;
 
-    for(std::size_t atomIndex = 0; atomIndex < context.atomCount(); ++atomIndex){
-        const int structureType = context.structureTypes->getInt(atomIndex);
-        if(structureType == LATTICE_OTHER){
-            continue;
+    tbb::parallel_for(tbb::blocked_range<std::size_t>(0, context.atomCount()), [&](const tbb::blocked_range<std::size_t>& range){
+        for(std::size_t atomIndex = range.begin(); atomIndex < range.end(); ++atomIndex){
+            const int structureType = structureTypes[atomIndex];
+            if(structureType == LATTICE_OTHER){
+                continue;
+            }
+
+            const int neighborCount = neighborCounts ? neighborCounts[atomIndex] : 0;
+            const int maxCount = analysis.hasNeighborLatticeVectorOverrides()
+                ? static_cast<int>(MAX_NEIGHBORS)
+                : analysis.coordinationNumber(structureType);
+            const int exportableCount = std::max(0, std::min(neighborCount, maxCount));
+            const std::size_t atomBase = atomIndex * static_cast<std::size_t>(MAX_NEIGHBORS) * 3;
+
+            for(int neighborSlot = 0; neighborSlot < exportableCount; ++neighborSlot){
+                const Vector3& vector = analysis.neighborLatticeVector(static_cast<int>(atomIndex), neighborSlot);
+                const std::size_t baseComponent = atomBase + static_cast<std::size_t>(neighborSlot) * 3;
+                data[baseComponent + 0] = vector.x();
+                data[baseComponent + 1] = vector.y();
+                data[baseComponent + 2] = vector.z();
+            }
         }
-
-        const int neighborCount = context.neighborCounts
-            ? context.neighborCounts->getInt(static_cast<int>(atomIndex))
-            : 0;
-        const int maxCount = analysis.hasNeighborLatticeVectorOverrides()
-            ? static_cast<int>(MAX_NEIGHBORS)
-            : analysis.coordinationNumber(structureType);
-        const int exportableCount = std::max(0, std::min(neighborCount, maxCount));
-
-        for(int neighborSlot = 0; neighborSlot < exportableCount; ++neighborSlot){
-            const Vector3& vector = analysis.neighborLatticeVector(static_cast<int>(atomIndex), neighborSlot);
-            const std::size_t baseComponent = static_cast<std::size_t>(neighborSlot) * 3;
-            property->setDoubleComponent(atomIndex, baseComponent + 0, vector.x());
-            property->setDoubleComponent(atomIndex, baseComponent + 1, vector.y());
-            property->setDoubleComponent(atomIndex, baseComponent + 2, vector.z());
-        }
-    }
+    });
 
     return property;
 }

@@ -18,13 +18,15 @@ using StructureNameResolver = std::function<std::string(std::size_t atomIndex, i
 // Streaming augmenter: writes extra fields directly to MsgpackWriter.
 // extraFieldCount must be the exact number of extra key/value pairs written.
 using AtomFieldWriter = std::function<void(MsgpackWriter& w, std::size_t atomIndex, int structureType, int& extraFieldCount)>;
+using AtomFieldCountResolver = std::function<int(std::size_t atomIndex, int structureType)>;
 
 void streamStructureIdentificationToFile(
     const std::string& filePath,
     const LammpsParser::Frame& frame,
     const StructureAnalysis& analysis,
     StructureNameResolver resolveStructureName = {},
-    AtomFieldWriter atomFieldWriter = {}
+    AtomFieldWriter atomFieldWriter = {},
+    AtomFieldCountResolver atomFieldCountResolver = {}
 );
 
 }

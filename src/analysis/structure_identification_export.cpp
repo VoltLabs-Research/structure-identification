@@ -95,7 +95,7 @@ void renderAtomisticChunk(
         writer.write_int(clusterId);
         if(!topologyName.empty()){
             writer.write_key("topology_name");
-            writer.write_str(topologyName);
+            writer.write_str(std::string(topologyName));
         }
         if(atomFieldWriter){
             int writtenExtraFields = 0;
@@ -139,7 +139,7 @@ void renderPerAtomChunk(
         writer.write_int(atomClusters ? atomClusters[atomIndex] : 0);
         if(!topologyName.empty()){
             writer.write_key("topology_name");
-            writer.write_str(topologyName);
+            writer.write_str(std::string(topologyName));
         }
     }
 

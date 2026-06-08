@@ -15,7 +15,7 @@
             "icon": "HiCubeTransparent",
             "author": "Rodolfo Herrera",
             "license": "MIT",
-            "version": "1.0.0",
+            "version": "1.0.1",
             "homepage": "https://github.com/VoltLabs-Research/CoreToolkit",
             "description": "Shared reconstructed-state and cluster-graph library used by CNA, PTM, PSM, ElasticStrain and OpenDXA. This package does not expose a standalone executable entrypoint."
           }

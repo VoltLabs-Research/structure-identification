@@ -29,7 +29,6 @@ struct ExportFrameView{
 
 constexpr std::size_t kMsgpackChunkSize = 16384;
 constexpr int kAtomisticBaseFields = 5;
-constexpr int kPerAtomBaseFields = 4;
 
 std::string defaultStructureName(int structureType){
     return structureTypeName(structureType);
@@ -111,36 +110,28 @@ void renderPerAtomChunk(
     std::size_t atomBegin,
     std::size_t atomEnd,
     const ExportFrameView& frameView,
-    const int* structureTypes,
+    [[maybe_unused]] const int* structureTypes,
     const int* atomClusters,
     const std::vector<std::uint32_t>& atomGroupOrdinals,
     const std::vector<const std::string*>& orderedStructureNames,
-    const std::vector<std::string_view>& topologyNames
+    [[maybe_unused]] const std::vector<std::string_view>& topologyNames
 ){
     std::ostringstream stream(std::ios::binary | std::ios::out);
     MsgpackWriter writer(stream);
 
     for(std::size_t atomIndex = atomBegin; atomIndex < atomEnd; ++atomIndex){
-        const int structureType = structureTypes
-            ? structureTypes[atomIndex]
-            : static_cast<int>(StructureType::OTHER);
         const std::string& structureName = *orderedStructureNames[atomGroupOrdinals[atomIndex]];
-        const std::string_view topologyName = topologyNames[atomIndex];
-        const int extraFields = topologyName.empty() ? 0 : 1;
 
-        writer.write_map_header(static_cast<uint32_t>(kPerAtomBaseFields + extraFields));
+        // per-atom-properties (coloring set): keep the atom id plus the
+        // meaningful structure_name and cluster_id. structure_id is redundant
+        // with structure_name, and topology_name is intentionally dropped here.
+        writer.write_map_header(3);
         writer.write_key("id");
         writer.write_int(atomIdForExport(frameView, atomIndex));
-        writer.write_key("structure_id");
-        writer.write_int(structureType);
         writer.write_key("structure_name");
         writer.write_str(structureName);
         writer.write_key("cluster_id");
         writer.write_int(atomClusters ? atomClusters[atomIndex] : 0);
-        if(!topologyName.empty()){
-            writer.write_key("topology_name");
-            writer.write_str(std::string(topologyName));
-        }
     }
 
     renderedChunk = stream.str();

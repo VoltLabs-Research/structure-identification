@@ -58,9 +58,10 @@ inline bool appendClusterOutputs(
     const AnalysisContext& context,
     StructureAnalysis& analysis,
     nlohmann::json& result,
-    std::string* errorMessage
+    std::string* errorMessage,
+    const std::vector<AnalysisContext::ExtraScalarColumn>& extraColumns = {}
 ){
-    if(!context.writeDumpWithContext(frame, inputDumpPath, &analysis)){
+    if(!context.writeDumpWithContext(frame, inputDumpPath, &analysis, extraColumns)){
         if(errorMessage){
             *errorMessage = "Failed to write " + inputDumpPath;
         }

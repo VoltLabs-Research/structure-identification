@@ -161,7 +161,10 @@ AnalysisContext::AnalysisContext(
     }
 }
 
-AnalysisContext::ExportedContext AnalysisContext::exportContext(const StructureAnalysis* analysis) const{
+AnalysisContext::ExportedContext AnalysisContext::exportContext(
+    const StructureAnalysis* analysis,
+    const std::vector<ExtraScalarColumn>& extraColumns
+) const{
     ExportedContext exported;
     auto& columns = exported.columns;
     auto& ownedProperties = exported.ownedProperties;
@@ -202,16 +205,25 @@ AnalysisContext::ExportedContext AnalysisContext::exportContext(const StructureA
         LammpsParser::writeColumn(columns, AnalysisDumpUtils::neighborLatticeVectorNames(), neighborLatticeVectors);
     }
 
+    for(const auto& extra : extraColumns){
+        if(!extra.property){
+            continue;
+        }
+        ownedProperties.push_back(extra.property);
+        LammpsParser::writeColumn(columns, { extra.name }, extra.property);
+    }
+
     return exported;
 }
 
 bool AnalysisContext::writeDumpWithContext(
     const LammpsParser::Frame& frame,
     const std::string& outputFilename,
-    const StructureAnalysis* analysis
+    const StructureAnalysis* analysis,
+    const std::vector<ExtraScalarColumn>& extraColumns
 ) const{
     LammpsParser parser;
-    const auto exported = exportContext(analysis);
+    const auto exported = exportContext(analysis, extraColumns);
 
     const std::vector<int>* atomIds = nullptr;
     std::vector<int> generatedAtomIds;

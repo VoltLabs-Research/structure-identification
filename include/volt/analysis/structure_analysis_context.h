@@ -53,11 +53,20 @@ public:
         std::vector<std::shared_ptr<ParticleProperty>> ownedProperties;
     };
 
-    ExportedContext exportContext(const StructureAnalysis* analysis = nullptr) const;
+    struct ExtraScalarColumn{
+        std::string name;
+        std::shared_ptr<ParticleProperty> property;
+    };
+
+    ExportedContext exportContext(
+        const StructureAnalysis* analysis = nullptr,
+        const std::vector<ExtraScalarColumn>& extraColumns = {}
+    ) const;
     bool writeDumpWithContext(
         const LammpsParser::Frame& frame,
         const std::string& outputFilename,
-        const StructureAnalysis* analysis = nullptr
+        const StructureAnalysis* analysis = nullptr,
+        const std::vector<ExtraScalarColumn>& extraColumns = {}
     ) const;
 
     AnalysisContext(

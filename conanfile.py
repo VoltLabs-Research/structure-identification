@@ -4,7 +4,7 @@ from conan.tools.cmake import CMake, CMakeToolchain, CMakeDeps, cmake_layout
 
 class StructureIdentificationConan(ConanFile):
     name = "structure-identification"
-    version = "2.0.1"
+    version = "2.1.1"
     package_type = "static-library"
     license = "MIT"
     settings = "os", "arch", "compiler", "build_type"
@@ -12,10 +12,11 @@ class StructureIdentificationConan(ConanFile):
     requires = (
         "boost/1.88.0",
         "onetbb/2021.12.0",
-        "coretoolkit/[>=2.0]",
+        "coretoolkit/[>=2.5]",
         "spdlog/1.14.1",
         "nlohmann_json/3.11.3",
         "yaml-cpp/0.8.0",
+        "duckdb/1.4.3",
     )
     exports_sources = "CMakeLists.txt", "include/*", "src/*"
 
@@ -47,4 +48,5 @@ class StructureIdentificationConan(ConanFile):
             "nlohmann_json::nlohmann_json",
             "spdlog::spdlog",
             "yaml-cpp::yaml-cpp",
+            "duckdb::duckdb",
         ]

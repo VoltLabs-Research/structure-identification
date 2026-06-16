@@ -4,11 +4,14 @@
 #include <volt/structures/crystal_structure_types.h>
 
 #include <algorithm>
+#include <cstdint>
 #include <stdexcept>
 #include <string>
 
 #include <tbb/blocked_range.h>
 #include <tbb/parallel_for.h>
+
+#include <duckdb.hpp>
 
 namespace Volt{
 
@@ -195,15 +198,9 @@ AnalysisContext::ExportedContext AnalysisContext::exportContext(
     writeRawIntColumn("structure_type", structureTypes, LATTICE_OTHER);
     writeIntColumn("cluster_id", atomClusters, 0);
 
-    auto neighborIndicesProperty = makeNeighborIndicesProperty(*this);
-    ownedProperties.push_back(neighborIndicesProperty);
-    LammpsParser::writeColumn(columns, AnalysisDumpUtils::neighborIndexNames(), neighborIndicesProperty);
-
-    if(analysis){
-        auto neighborLatticeVectors = makeNeighborLatticeVectorProperty(*this, *analysis);
-        ownedProperties.push_back(neighborLatticeVectors);
-        LammpsParser::writeColumn(columns, AnalysisDumpUtils::neighborLatticeVectorNames(), neighborLatticeVectors);
-    }
+    // Neighbor topology (neighbor_indices_* / neighbor_lattice_*) no longer rides
+    // in the annotated dump — it is written to a dedicated `_neighbor_lattice.parquet`
+    // sidecar by streamNeighborTopologyToParquet and consumed via inferFromContext.
 
     for(const auto& extra : extraColumns){
         if(!extra.property){
@@ -246,6 +243,106 @@ bool AnalysisContext::writeDumpWithContext(
         exported.headers,
         true
     );
+}
+
+namespace{
+
+// Escapes a path for a single-quoted SQL string literal (mirrors CoreToolkit's
+// internal Detail::sqlQuote, which plugins are not meant to include).
+std::string sqlQuotePath(const std::string& path){
+    std::string out;
+    out.reserve(path.size() + 2);
+    out.push_back('\'');
+    for(char c : path){
+        if(c == '\'') out.push_back('\'');
+        out.push_back(c);
+    }
+    out.push_back('\'');
+    return out;
+}
+
+}
+
+bool streamNeighborTopologyToParquet(
+    const std::string& filePath,
+    const LammpsParser::Frame& frame,
+    const AnalysisContext& context,
+    const StructureAnalysis& analysis
+){
+    using namespace AnalysisContextDetail;
+
+    const std::size_t atomCount = context.atomCount();
+
+    // Build both packed properties once (indices: 18 components/atom,
+    // lattice vectors: 54 = MAX_NEIGHBORS*3 components/atom).
+    const auto neighborIndices = makeNeighborIndicesProperty(context);
+    const auto neighborLattice = makeNeighborLatticeVectorProperty(context, analysis);
+    const int* indexData = neighborIndices->constDataInt();
+    const double* latticeData = neighborLattice->constDataDouble();
+
+    const std::vector<int>* atomIds = nullptr;
+    std::vector<int> generatedAtomIds;
+    if(frame.ids.size() == atomCount){
+        atomIds = &frame.ids;
+    }else{
+        generatedAtomIds.resize(atomCount);
+        for(std::size_t atomIndex = 0; atomIndex < atomCount; ++atomIndex){
+            generatedAtomIds[atomIndex] = static_cast<int>(atomIndex);
+        }
+        atomIds = &generatedAtomIds;
+    }
+
+    try{
+        // ponytail: fixed 74-col schema, Appender streams row-at-a-time — no
+        // per-cell duckdb::Value buffer blowup like the dynamic atom writer.
+        duckdb::DuckDB db(nullptr);
+        duckdb::Connection con(db);
+
+        std::string ddl = "CREATE TABLE neighbors(id UBIGINT, atom_index UINTEGER";
+        for(int slot = 0; slot < MAX_NEIGHBORS; ++slot){
+            ddl += ", \"" + AnalysisDumpUtils::neighborIndexName(slot) + "\" INTEGER";
+        }
+        for(int slot = 0; slot < MAX_NEIGHBORS; ++slot){
+            ddl += ", \"" + AnalysisDumpUtils::neighborLatticeComponentName('x', slot) + "\" DOUBLE";
+            ddl += ", \"" + AnalysisDumpUtils::neighborLatticeComponentName('y', slot) + "\" DOUBLE";
+            ddl += ", \"" + AnalysisDumpUtils::neighborLatticeComponentName('z', slot) + "\" DOUBLE";
+        }
+        ddl += ')';
+        if(con.Query(ddl)->HasError()){
+            return false;
+        }
+
+        {
+            duckdb::Appender appender(con, "neighbors");
+            for(std::size_t atomIndex = 0; atomIndex < atomCount; ++atomIndex){
+                appender.BeginRow();
+                appender.Append<std::uint64_t>(static_cast<std::uint64_t>((*atomIds)[atomIndex]));
+                appender.Append<std::uint32_t>(static_cast<std::uint32_t>(atomIndex));
+
+                const std::size_t indexBase = atomIndex * static_cast<std::size_t>(MAX_NEIGHBORS);
+                for(int slot = 0; slot < MAX_NEIGHBORS; ++slot){
+                    appender.Append<std::int32_t>(indexData[indexBase + static_cast<std::size_t>(slot)]);
+                }
+
+                const std::size_t latticeBase = atomIndex * static_cast<std::size_t>(MAX_NEIGHBORS) * 3;
+                for(int slot = 0; slot < MAX_NEIGHBORS; ++slot){
+                    const std::size_t component = latticeBase + static_cast<std::size_t>(slot) * 3;
+                    appender.Append<double>(latticeData[component + 0]);
+                    appender.Append<double>(latticeData[component + 1]);
+                    appender.Append<double>(latticeData[component + 2]);
+                }
+                appender.EndRow();
+            }
+            appender.Close();
+        }
+
+        const std::string copySql =
+            "COPY neighbors TO " + sqlQuotePath(filePath) +
+            " (FORMAT PARQUET, COMPRESSION ZSTD)";
+        return !con.Query(copySql)->HasError();
+    }catch(const std::exception&){
+        return false;
+    }
 }
 
 }

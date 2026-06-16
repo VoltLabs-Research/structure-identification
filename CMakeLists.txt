@@ -39,6 +39,7 @@ find_package(Boost REQUIRED)
 find_package(spdlog REQUIRED)
 find_package(nlohmann_json REQUIRED)
 find_package(yaml-cpp REQUIRED)
+find_package(duckdb REQUIRED)
 
 set(STRUCTURE_IDENTIFICATION_BOOST_TARGET "")
 if(TARGET Boost::headers)
@@ -87,6 +88,7 @@ target_link_libraries(${PROJECT_NAME} PUBLIC
 	spdlog::spdlog
 	nlohmann_json::nlohmann_json
 	yaml-cpp::yaml-cpp
+	duckdb::duckdb
 )
 
 install(TARGETS ${PROJECT_NAME} DESTINATION lib)

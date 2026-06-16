@@ -83,6 +83,19 @@ inline bool appendClusterOutputs(
 
     result["clusters_table"] = clusterGraphPaths.clustersTablePath;
     result["cluster_transitions_table"] = clusterGraphPaths.clusterTransitionsTablePath;
+
+    // Neighbor topology sidecar: the per-atom neighbor graph + ideal lattice
+    // vectors that OpenDXA / ElasticStrain / LineReconstructionDXA consume via
+    // the `neighbor_lattice` inferFromContext exposure (kept out of atoms.parquet
+    // and the annotated dump).
+    const std::string neighborLatticePath = outputBase + "_neighbor_lattice.parquet";
+    if(!streamNeighborTopologyToParquet(neighborLatticePath, frame, context, analysis)){
+        if(errorMessage){
+            *errorMessage = "Failed to write " + neighborLatticePath;
+        }
+        return false;
+    }
+    result["neighbor_lattice"] = neighborLatticePath;
     return true;
 }
 

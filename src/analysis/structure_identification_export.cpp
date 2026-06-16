@@ -59,7 +59,10 @@ void streamStructureIdentificationToParquet(
             }
             if(atomColumnWriter) atomColumnWriter(w, i, structureTypeFor(i));
         },
-        [&](std::size_t i){ return structureTypeFor(i); }
+        [&](std::size_t i){ return structureTypeFor(i); },
+        // This helper is the structural-identification path (PTM/ACNA/opendxa/
+        // structure-identification): always emit structure_id/structure_name.
+        /*includeStructureColumns=*/true
     );
 }
 

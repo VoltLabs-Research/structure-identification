@@ -78,13 +78,6 @@ public:
     );
 };
 
-// Writes the per-atom neighbor topology (neighbor_indices_0..17 +
-// neighbor_lattice_{x,y,z}_0..17, keyed by atom id) to a standalone Parquet
-// sidecar. This data used to ride inside the annotated dump; it now travels as
-// a dedicated `_neighbor_lattice.parquet` shared exposure consumed by
-// OpenDXA / ElasticStrain / LineReconstructionDXA via inferFromContext. Column
-// names match what ReconstructedStructureContext reads back. Returns false on
-// any DuckDB error.
 bool streamNeighborTopologyToParquet(
     const std::string& filePath,
     const LammpsParser::Frame& frame,

@@ -85,7 +85,6 @@ public:
 	const Vector3& latticeVector(int structureType, int latticeVectorIndex) const;
 	std::string_view topologyName(int structureType) const;
 
-	// Returns the ideal lattice vector associated with a neighbor bond
 	const Vector3& neighborLatticeVector(int centralAtomIndex, int neighborIndex) const;
 
 	void setNeighborLatticeVectorOverrides(std::vector<Vector3> overrides, std::size_t stride);

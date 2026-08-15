@@ -36,7 +36,6 @@ void streamStructureIdentificationToParquet(
         return structureTypes ? structureTypes[i] : static_cast<int>(StructureType::OTHER);
     };
 
-    // Topology name per atom (sparse); emitted as a column when present.
     std::vector<std::string_view> topologyNames(natoms);
     for(std::size_t atomIndex = 0; atomIndex < natoms; ++atomIndex){
         if(const Cluster* cluster = analysis.atomCluster(static_cast<int>(atomIndex));
@@ -60,8 +59,6 @@ void streamStructureIdentificationToParquet(
             if(atomColumnWriter) atomColumnWriter(w, i, structureTypeFor(i));
         },
         [&](std::size_t i){ return structureTypeFor(i); },
-        // This helper is the structural-identification path (PTM/ACNA/opendxa/
-        // structure-identification): always emit structure_id/structure_name.
         /*includeStructureColumns=*/true
     );
 }

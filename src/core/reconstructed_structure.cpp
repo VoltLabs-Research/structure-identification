@@ -21,13 +21,6 @@ namespace Volt{
 
 namespace{
 
-// Builds the CSR neighbor graph + lattice-vector overrides from raw per-slot
-// column pointers. `neighborSlotPtrs[s][atomIndex]` is the positional index of
-// atom `atomIndex`'s s-th neighbor (negative ⇒ no neighbor in that slot);
-// `latticePtrs[axis][s][atomIndex]` is that neighbor's ideal lattice vector
-// component. Positions for the maximum-neighbor-distance scan come from `frame`.
-// This is the exact assembly that previously lived inline in loadFromFrame —
-// the only change is its inputs now come from the sidecar Parquet, not the dump.
 bool assembleNeighborGraph(
     const LammpsParser::Frame& frame,
     StructureAnalysis& analysis,
@@ -37,7 +30,6 @@ bool assembleNeighborGraph(
 ){
     const size_t natoms = static_cast<size_t>(frame.natoms);
 
-    // Parallel neighbor counting
     std::vector<int> neighborCounts(natoms, 0);
 
     tbb::parallel_for(tbb::blocked_range<size_t>(0, natoms, 8192),
@@ -52,7 +44,6 @@ bool assembleNeighborGraph(
         }
     });
 
-    // Prefix sum for offsets
     std::vector<int> compactOffsets(natoms + 1, 0);
     int totalNeighborEntries = 0;
     for(size_t i = 0; i < natoms; ++i){
@@ -64,7 +55,6 @@ bool assembleNeighborGraph(
     context.neighborCounts = AnalysisDumpUtils::makeIntProperty(neighborCounts);
     context.neighborOffsets = AnalysisDumpUtils::makeIntProperty(compactOffsets);
 
-    // Parallel compact neighbor indices
     auto compactNeighborIndices = std::make_shared<ParticleProperty>(
         static_cast<size_t>(totalNeighborEntries), DataType::Int, 1, 0, true
     );
@@ -83,7 +73,6 @@ bool assembleNeighborGraph(
 
     context.neighborIndices = compactNeighborIndices;
 
-    // Parallel max neighbor distance
     context.maximumNeighborDistance = tbb::parallel_reduce(
         tbb::blocked_range<size_t>(0, natoms, 8192),
         0.0,
@@ -105,7 +94,6 @@ bool assembleNeighborGraph(
         [](double a, double b){ return std::max(a, b); }
     );
 
-    // Parallel vector overrides assembly
     std::vector<Vector3> neighborVectorOverrides(
         context.atomCount() * static_cast<size_t>(MAX_NEIGHBORS),
         Vector3::Zero()
@@ -177,23 +165,6 @@ bool ReconstructedStructureContext::loadStructureAndClusterFromFrame(
 
 namespace{
 
-// Column readers for the neighbour-topology sidecar.
-//
-// The previous implementation called MaterializedQueryResult::GetValue(col, row) once
-// per cell. With 18 index columns plus 54 lattice columns plus id and atom_index, that
-// is 74 calls per atom — 19 million duckdb::Value constructions for a 256k-atom frame,
-// each one a heap-allocating tagged union. Measured: 918 ms of a 922 ms "structure
-// reconstruction" stage, which is the largest single stage of an OpenDXA run.
-//
-// DuckDB's actual read path is a chunk of typed flat vectors. UnifiedVectorFormat is
-// used rather than FlatVector::GetData because a chunk vector may legitimately arrive
-// constant- or dictionary-encoded, and the unified view handles all three without a
-// separate Flatten() pass.
-//
-// Both readers scatter through `targetRow` instead of writing sequentially: dropping
-// the ORDER BY (which sorted a 74-column table) means chunks arrive in file order, so
-// each value is placed at the atom it belongs to. The id cross-check further down still
-// catches a mismatched sidecar.
 template<typename Dest, typename Convert>
 bool readColumnInto(duckdb::Vector& vec, duckdb::idx_t count, const std::vector<int>& targetRow,
                     duckdb::idx_t chunkOffset, Dest* dest, Convert convert){
@@ -209,11 +180,6 @@ bool readColumnInto(duckdb::Vector& vec, duckdb::idx_t count, const std::vector<
     return true;
 }
 
-// Integer columns. The sidecar's writer picks the narrowest type that fits, so the
-// same logical column can arrive as UINTEGER, INTEGER or BIGINT depending on the frame
-// — atom_index came back UINTEGER on a 256k-atom run. The old GetValue<int64_t>() path
-// cast all of them silently; a typed read has to enumerate them, so cover the whole
-// integer family rather than guessing which two show up today.
 template<typename Dest>
 bool readIntegerColumn(duckdb::Vector& vec, duckdb::idx_t count, const std::vector<int>& targetRow,
                        duckdb::idx_t chunkOffset, Dest* dest, std::string* what){
@@ -277,8 +243,6 @@ bool ReconstructedStructureContext::loadNeighborTopologyFromParquet(
 
     const size_t natoms = static_cast<size_t>(frame.natoms);
 
-    // Materialise the 18 index columns + 54 lattice columns into stable per-column
-    // buffers, ordered by atom_index so row i corresponds to frame atom i.
     std::vector<std::vector<int>> indexStorage(MAX_NEIGHBORS, std::vector<int>(natoms, -1));
     std::array<std::array<std::vector<double>, MAX_NEIGHBORS>, 3> latticeStorage;
     for(int axis = 0; axis < 3; ++axis){
@@ -292,9 +256,6 @@ bool ReconstructedStructureContext::loadNeighborTopologyFromParquet(
         auto db = Volt::Detail::openInMemoryDb();
         duckdb::Connection con(*db);
 
-        // No ORDER BY. It sorted a 74-column table only to make row i correspond to
-        // atom i; reading atom_index and scattering achieves the same placement without
-        // the sort, and the id cross-check below still rejects a mismatched sidecar.
         const std::string sql =
             "SELECT * FROM read_parquet(" + sqlQuotePath(neighborParquetPath) + ")";
         auto result = con.Query(sql);
@@ -312,7 +273,6 @@ bool ReconstructedStructureContext::loadNeighborTopologyFromParquet(
             return false;
         }
 
-        // Map column name → result column index.
         const auto columnCount = result->ColumnCount();
         std::array<int, MAX_NEIGHBORS> indexCol;
         indexCol.fill(-1);
@@ -361,8 +321,6 @@ bool ReconstructedStructureContext::loadNeighborTopologyFromParquet(
             return false;
         }
 
-        // Chunked columnar read. Two passes over each chunk: resolve where its rows
-        // belong, then read every column straight out of its typed vector.
         std::vector<int> targetRow;
         std::string typeError;
         while(auto chunk = result->Fetch()){
@@ -412,8 +370,6 @@ bool ReconstructedStructureContext::loadNeighborTopologyFromParquet(
                 }
             }
 
-            // chunkOffset is 0: targetRow is rebuilt per chunk, so row r of this chunk
-            // is entry r of targetRow.
             if(idCol >= 0){
                 if(!readIntegerColumn(chunk->data[static_cast<duckdb::idx_t>(idCol)], count,
                                     targetRow, 0, parquetIds.data(), &typeError)){
@@ -451,10 +407,6 @@ bool ReconstructedStructureContext::loadNeighborTopologyFromParquet(
         return false;
     }
 
-    // Safety: positional neighbor indices are only valid if the Parquet rows line
-    // up with this frame's atoms. atom_index ordering guarantees row i == atom i;
-    // additionally assert the id columns match so a stale/mismatched sidecar fails
-    // loudly instead of producing wrong dislocations.
     if(frame.ids.size() == natoms){
         for(size_t i = 0; i < natoms; ++i){
             if(parquetIds[i] >= 0 && parquetIds[i] != static_cast<std::int64_t>(frame.ids[i])){
@@ -489,11 +441,6 @@ bool ReconstructedStructureLoader::load(
     ReconstructedStructureContext& context,
     std::string* errorMessage
 ){
-    // Timed per source, because "structure reconstruction" is the largest single stage
-    // of an OpenDXA run at full parallelism (measured 856 ms of 2385 ms at 256k atoms,
-    // 37.9 s of 97.7 s at 7.3M) and it is the stage a whole architecture migration is
-    // proposed to delete. Before rewriting anything around it, it has to be known which
-    // of its three inputs the time is actually in.
     auto mark = [](std::chrono::steady_clock::time_point& since){
         const auto now = std::chrono::steady_clock::now();
         const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now - since).count();

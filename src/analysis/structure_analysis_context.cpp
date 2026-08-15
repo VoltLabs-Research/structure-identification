@@ -199,10 +199,6 @@ AnalysisContext::ExportedContext AnalysisContext::exportContext(
     writeRawIntColumn("structure_type", structureTypes, LATTICE_OTHER);
     writeIntColumn("cluster_id", atomClusters, 0);
 
-    // Neighbor topology (neighbor_indices_* / neighbor_lattice_*) no longer rides
-    // in the annotated dump — it is written to a dedicated `_neighbor_lattice.parquet`
-    // sidecar by streamNeighborTopologyToParquet and consumed via inferFromContext.
-
     for(const auto& extra : extraColumns){
         if(!extra.property){
             continue;
@@ -248,8 +244,6 @@ bool AnalysisContext::writeDumpWithContext(
 
 namespace{
 
-// Escapes a path for a single-quoted SQL string literal (mirrors CoreToolkit's
-// internal Detail::sqlQuote, which plugins are not meant to include).
 std::string sqlQuotePath(const std::string& path){
     std::string out;
     out.reserve(path.size() + 2);
@@ -274,8 +268,6 @@ bool streamNeighborTopologyToParquet(
 
     const std::size_t atomCount = context.atomCount();
 
-    // Build both packed properties once (indices: 18 components/atom,
-    // lattice vectors: 54 = MAX_NEIGHBORS*3 components/atom).
     const auto neighborIndices = makeNeighborIndicesProperty(context);
     const auto neighborLattice = makeNeighborLatticeVectorProperty(context, analysis);
     const int* indexData = neighborIndices->constDataInt();
@@ -294,8 +286,6 @@ bool streamNeighborTopologyToParquet(
     }
 
     try{
-        // ponytail: fixed 74-col schema, Appender streams row-at-a-time — no
-        // per-cell duckdb::Value buffer blowup like the dynamic atom writer.
         auto db = Volt::Detail::openInMemoryDb();
         duckdb::Connection con(*db);
 

@@ -14,8 +14,6 @@ struct NeighborBondArray{
     }
 
     inline void setNeighborBond(int neighborIndex1, int neighborIndex2, bool bonded){
-        //assert(neighborIndex1 < 32);
-        //assert(neighborIndex2 < 32);
         const unsigned int bit1 = 1u << neighborIndex2;
         const unsigned int bit2 = 1u << neighborIndex1;
         if(bonded){
@@ -28,8 +26,6 @@ struct NeighborBondArray{
     }
 
     inline bool neighborBond(int neighborIndex1, int neighborIndex2) const{
-        //assert(neighborIndex1 < 32);
-        //assert(neighborIndex2 < 32);
         return (neighborArray[neighborIndex1] & (1u << neighborIndex2)) != 0;
     }
 

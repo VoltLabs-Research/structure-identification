@@ -14,8 +14,6 @@ namespace{
 
 constexpr double kOrientationClusterToleranceRadians = 25.0 * PI / 180.0;
 constexpr double kOrientationNeighborVectorTolerance = 1e-4;
-// Precomputed cos(25 deg). Some standard library implementations still do not
-// expose std::cos() as constexpr in this build configuration.
 constexpr double kOrientationBondAlignmentTolerance = 0.9063077870366499;
 
 }

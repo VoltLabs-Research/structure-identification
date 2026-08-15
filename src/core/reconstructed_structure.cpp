@@ -1,4 +1,6 @@
 #include <volt/core/reconstructed_structure.h>
+
+#include <chrono>
 #include <volt/analysis/reconstructed_dump_utils.h>
 
 #include <tbb/parallel_for.h>
@@ -13,6 +15,7 @@
 #include <vector>
 
 #include <duckdb.hpp>
+#include <volt/utilities/duckdb_parquet.h>
 
 namespace Volt{
 
@@ -172,6 +175,92 @@ bool ReconstructedStructureContext::loadStructureAndClusterFromFrame(
     return true;
 }
 
+namespace{
+
+// Column readers for the neighbour-topology sidecar.
+//
+// The previous implementation called MaterializedQueryResult::GetValue(col, row) once
+// per cell. With 18 index columns plus 54 lattice columns plus id and atom_index, that
+// is 74 calls per atom — 19 million duckdb::Value constructions for a 256k-atom frame,
+// each one a heap-allocating tagged union. Measured: 918 ms of a 922 ms "structure
+// reconstruction" stage, which is the largest single stage of an OpenDXA run.
+//
+// DuckDB's actual read path is a chunk of typed flat vectors. UnifiedVectorFormat is
+// used rather than FlatVector::GetData because a chunk vector may legitimately arrive
+// constant- or dictionary-encoded, and the unified view handles all three without a
+// separate Flatten() pass.
+//
+// Both readers scatter through `targetRow` instead of writing sequentially: dropping
+// the ORDER BY (which sorted a 74-column table) means chunks arrive in file order, so
+// each value is placed at the atom it belongs to. The id cross-check further down still
+// catches a mismatched sidecar.
+template<typename Dest, typename Convert>
+bool readColumnInto(duckdb::Vector& vec, duckdb::idx_t count, const std::vector<int>& targetRow,
+                    duckdb::idx_t chunkOffset, Dest* dest, Convert convert){
+    duckdb::UnifiedVectorFormat fmt;
+    vec.ToUnifiedFormat(count, fmt);
+    for(duckdb::idx_t r = 0; r < count; ++r){
+        const int target = targetRow[chunkOffset + r];
+        if(target < 0) continue;
+        const auto idx = fmt.sel->get_index(r);
+        if(!fmt.validity.RowIsValid(idx)) continue;
+        convert(fmt, idx, dest[target]);
+    }
+    return true;
+}
+
+// Integer columns. The sidecar's writer picks the narrowest type that fits, so the
+// same logical column can arrive as UINTEGER, INTEGER or BIGINT depending on the frame
+// — atom_index came back UINTEGER on a 256k-atom run. The old GetValue<int64_t>() path
+// cast all of them silently; a typed read has to enumerate them, so cover the whole
+// integer family rather than guessing which two show up today.
+template<typename Dest>
+bool readIntegerColumn(duckdb::Vector& vec, duckdb::idx_t count, const std::vector<int>& targetRow,
+                       duckdb::idx_t chunkOffset, Dest* dest, std::string* what){
+    const auto assign = [&](auto tag) {
+        using Physical = decltype(tag);
+        return readColumnInto(vec, count, targetRow, chunkOffset, dest,
+            [](const duckdb::UnifiedVectorFormat& f, duckdb::idx_t i, Dest& out){
+                out = static_cast<Dest>(duckdb::UnifiedVectorFormat::GetData<Physical>(f)[i]);
+            });
+    };
+
+    switch(vec.GetType().id()){
+        case duckdb::LogicalTypeId::TINYINT:   return assign(int8_t{});
+        case duckdb::LogicalTypeId::SMALLINT:  return assign(int16_t{});
+        case duckdb::LogicalTypeId::INTEGER:   return assign(int32_t{});
+        case duckdb::LogicalTypeId::BIGINT:    return assign(int64_t{});
+        case duckdb::LogicalTypeId::UTINYINT:  return assign(uint8_t{});
+        case duckdb::LogicalTypeId::USMALLINT: return assign(uint16_t{});
+        case duckdb::LogicalTypeId::UINTEGER:  return assign(uint32_t{});
+        case duckdb::LogicalTypeId::UBIGINT:   return assign(uint64_t{});
+        default:
+            if(what) *what = "expected an integer column, got " + vec.GetType().ToString();
+            return false;
+    }
+}
+
+bool readDoubleColumn(duckdb::Vector& vec, duckdb::idx_t count, const std::vector<int>& targetRow,
+                      duckdb::idx_t chunkOffset, double* dest, std::string* what){
+    switch(vec.GetType().id()){
+        case duckdb::LogicalTypeId::DOUBLE:
+            return readColumnInto(vec, count, targetRow, chunkOffset, dest,
+                [](const duckdb::UnifiedVectorFormat& f, duckdb::idx_t i, double& out){
+                    out = duckdb::UnifiedVectorFormat::GetData<double>(f)[i];
+                });
+        case duckdb::LogicalTypeId::FLOAT:
+            return readColumnInto(vec, count, targetRow, chunkOffset, dest,
+                [](const duckdb::UnifiedVectorFormat& f, duckdb::idx_t i, double& out){
+                    out = duckdb::UnifiedVectorFormat::GetData<float>(f)[i];
+                });
+        default:
+            if(what) *what = "expected a floating-point column, got " + vec.GetType().ToString();
+            return false;
+    }
+}
+
+}
+
 bool ReconstructedStructureContext::loadNeighborTopologyFromParquet(
     const std::string& neighborParquetPath,
     const LammpsParser::Frame& frame,
@@ -200,11 +289,14 @@ bool ReconstructedStructureContext::loadNeighborTopologyFromParquet(
     std::vector<std::int64_t> parquetIds(natoms, -1);
 
     try{
-        duckdb::DuckDB db(nullptr);
-        duckdb::Connection con(db);
+        auto db = Volt::Detail::openInMemoryDb();
+        duckdb::Connection con(*db);
 
+        // No ORDER BY. It sorted a 74-column table only to make row i correspond to
+        // atom i; reading atom_index and scattering achieves the same placement without
+        // the sort, and the id cross-check below still rejects a mismatched sidecar.
         const std::string sql =
-            "SELECT * FROM read_parquet(" + sqlQuotePath(neighborParquetPath) + ") ORDER BY atom_index";
+            "SELECT * FROM read_parquet(" + sqlQuotePath(neighborParquetPath) + ")";
         auto result = con.Query(sql);
         if(result->HasError()){
             AnalysisDumpUtils::setError(errorMessage,
@@ -228,10 +320,12 @@ bool ReconstructedStructureContext::loadNeighborTopologyFromParquet(
         for(auto& axisCols : latticeCol) axisCols.fill(-1);
         int idCol = -1;
 
+        int atomIndexCol = -1;
         const std::array<char, 3> axes = { 'x', 'y', 'z' };
         for(duckdb::idx_t c = 0; c < columnCount; ++c){
             const std::string& name = result->names[c];
             if(name == "id"){ idCol = static_cast<int>(c); continue; }
+            if(name == "atom_index"){ atomIndexCol = static_cast<int>(c); continue; }
             for(int slot = 0; slot < MAX_NEIGHBORS; ++slot){
                 if(name == AnalysisDumpUtils::neighborIndexName(slot)){
                     indexCol[slot] = static_cast<int>(c);
@@ -261,19 +355,93 @@ bool ReconstructedStructureContext::loadNeighborTopologyFromParquet(
             }
         }
 
-        for(duckdb::idx_t row = 0; row < rowCount; ++row){
+        if(atomIndexCol < 0){
+            AnalysisDumpUtils::setError(errorMessage,
+                "Neighbor topology Parquet missing column 'atom_index'");
+            return false;
+        }
+
+        // Chunked columnar read. Two passes over each chunk: resolve where its rows
+        // belong, then read every column straight out of its typed vector.
+        std::vector<int> targetRow;
+        std::string typeError;
+        while(auto chunk = result->Fetch()){
+            const duckdb::idx_t count = chunk->size();
+            if(count == 0) continue;
+
+            targetRow.assign(count, -1);
+            {
+                duckdb::UnifiedVectorFormat fmt;
+                chunk->data[static_cast<duckdb::idx_t>(atomIndexCol)].ToUnifiedFormat(count, fmt);
+                const auto typeId = chunk->data[static_cast<duckdb::idx_t>(atomIndexCol)].GetType().id();
+                for(duckdb::idx_t r = 0; r < count; ++r){
+                    const auto idx = fmt.sel->get_index(r);
+                    if(!fmt.validity.RowIsValid(idx)) continue;
+                    std::int64_t atomIndex = -1;
+                    switch(typeId){
+                        case duckdb::LogicalTypeId::TINYINT:
+                            atomIndex = duckdb::UnifiedVectorFormat::GetData<int8_t>(fmt)[idx]; break;
+                        case duckdb::LogicalTypeId::SMALLINT:
+                            atomIndex = duckdb::UnifiedVectorFormat::GetData<int16_t>(fmt)[idx]; break;
+                        case duckdb::LogicalTypeId::INTEGER:
+                            atomIndex = duckdb::UnifiedVectorFormat::GetData<int32_t>(fmt)[idx]; break;
+                        case duckdb::LogicalTypeId::BIGINT:
+                            atomIndex = duckdb::UnifiedVectorFormat::GetData<int64_t>(fmt)[idx]; break;
+                        case duckdb::LogicalTypeId::UTINYINT:
+                            atomIndex = duckdb::UnifiedVectorFormat::GetData<uint8_t>(fmt)[idx]; break;
+                        case duckdb::LogicalTypeId::USMALLINT:
+                            atomIndex = duckdb::UnifiedVectorFormat::GetData<uint16_t>(fmt)[idx]; break;
+                        case duckdb::LogicalTypeId::UINTEGER:
+                            atomIndex = duckdb::UnifiedVectorFormat::GetData<uint32_t>(fmt)[idx]; break;
+                        case duckdb::LogicalTypeId::UBIGINT:
+                            atomIndex = static_cast<std::int64_t>(
+                                duckdb::UnifiedVectorFormat::GetData<uint64_t>(fmt)[idx]); break;
+                        default:
+                            AnalysisDumpUtils::setError(errorMessage,
+                                "Neighbor topology Parquet column 'atom_index' has unexpected type " +
+                                chunk->data[static_cast<duckdb::idx_t>(atomIndexCol)].GetType().ToString());
+                            return false;
+                    }
+                    if(atomIndex < 0 || static_cast<size_t>(atomIndex) >= natoms){
+                        AnalysisDumpUtils::setError(errorMessage,
+                            "Neighbor topology Parquet atom_index " + std::to_string(atomIndex) +
+                            " is outside this frame's atom range (" + std::to_string(natoms) + ").");
+                        return false;
+                    }
+                    targetRow[r] = static_cast<int>(atomIndex);
+                }
+            }
+
+            // chunkOffset is 0: targetRow is rebuilt per chunk, so row r of this chunk
+            // is entry r of targetRow.
             if(idCol >= 0){
-                const duckdb::Value v = result->GetValue(static_cast<duckdb::idx_t>(idCol), row);
-                parquetIds[row] = v.IsNull() ? -1 : v.GetValue<std::int64_t>();
+                if(!readIntegerColumn(chunk->data[static_cast<duckdb::idx_t>(idCol)], count,
+                                    targetRow, 0, parquetIds.data(), &typeError)){
+                    AnalysisDumpUtils::setError(errorMessage,
+                        "Neighbor topology Parquet column 'id': " + typeError);
+                    return false;
+                }
             }
             for(int slot = 0; slot < MAX_NEIGHBORS; ++slot){
-                const duckdb::Value v = result->GetValue(static_cast<duckdb::idx_t>(indexCol[slot]), row);
-                indexStorage[slot][row] = v.IsNull() ? -1 : static_cast<int>(v.GetValue<std::int64_t>());
+                if(!readIntegerColumn(chunk->data[static_cast<duckdb::idx_t>(indexCol[slot])], count,
+                                  targetRow, 0, indexStorage[slot].data(), &typeError)){
+                    AnalysisDumpUtils::setError(errorMessage,
+                        "Neighbor topology Parquet column '" +
+                        AnalysisDumpUtils::neighborIndexName(slot) + "': " + typeError);
+                    return false;
+                }
             }
             for(int axis = 0; axis < 3; ++axis){
                 for(int slot = 0; slot < MAX_NEIGHBORS; ++slot){
-                    const duckdb::Value v = result->GetValue(static_cast<duckdb::idx_t>(latticeCol[axis][slot]), row);
-                    latticeStorage[axis][slot][row] = v.IsNull() ? 0.0 : v.GetValue<double>();
+                    if(!readDoubleColumn(chunk->data[static_cast<duckdb::idx_t>(latticeCol[axis][slot])],
+                                         count, targetRow, 0,
+                                         latticeStorage[axis][slot].data(), &typeError)){
+                        AnalysisDumpUtils::setError(errorMessage,
+                            "Neighbor topology Parquet column '" +
+                            AnalysisDumpUtils::neighborLatticeComponentName(axes[axis], slot) +
+                            "': " + typeError);
+                        return false;
+                    }
                 }
             }
         }
@@ -321,18 +489,39 @@ bool ReconstructedStructureLoader::load(
     ReconstructedStructureContext& context,
     std::string* errorMessage
 ){
+    // Timed per source, because "structure reconstruction" is the largest single stage
+    // of an OpenDXA run at full parallelism (measured 856 ms of 2385 ms at 256k atoms,
+    // 37.9 s of 97.7 s at 7.3M) and it is the stage a whole architecture migration is
+    // proposed to delete. Before rewriting anything around it, it has to be known which
+    // of its three inputs the time is actually in.
+    auto mark = [](std::chrono::steady_clock::time_point& since){
+        const auto now = std::chrono::steady_clock::now();
+        const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now - since).count();
+        since = now;
+        return ms;
+    };
+    auto since = std::chrono::steady_clock::now();
+
     if(!ReconstructedStructureContext::loadStructureAndClusterFromFrame(frame, context, errorMessage)){
         return false;
     }
+    const auto fromFrameMs = mark(since);
 
     if(!ReconstructedStructureContext::loadNeighborTopologyFromParquet(
         neighborParquetPath, frame, structureAnalysis, context, errorMessage)){
         return false;
     }
+    const auto neighborParquetMs = mark(since);
 
     if(!importClusterGraph(structureAnalysis, paths, errorMessage)){
         return false;
     }
+    const auto clusterGraphMs = mark(since);
+
+    spdlog::info(
+        "  reconstruction: {}ms per-atom columns from dump, {}ms neighbor_lattice.parquet, {}ms cluster graph",
+        fromFrameMs, neighborParquetMs, clusterGraphMs
+    );
 
     return true;
 }

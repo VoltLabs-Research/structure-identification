@@ -12,6 +12,7 @@
 #include <tbb/parallel_for.h>
 
 #include <duckdb.hpp>
+#include <volt/utilities/duckdb_parquet.h>
 
 namespace Volt{
 
@@ -295,8 +296,8 @@ bool streamNeighborTopologyToParquet(
     try{
         // ponytail: fixed 74-col schema, Appender streams row-at-a-time — no
         // per-cell duckdb::Value buffer blowup like the dynamic atom writer.
-        duckdb::DuckDB db(nullptr);
-        duckdb::Connection con(db);
+        auto db = Volt::Detail::openInMemoryDb();
+        duckdb::Connection con(*db);
 
         std::string ddl = "CREATE TABLE neighbors(id UBIGINT, atom_index UINTEGER";
         for(int slot = 0; slot < MAX_NEIGHBORS; ++slot){

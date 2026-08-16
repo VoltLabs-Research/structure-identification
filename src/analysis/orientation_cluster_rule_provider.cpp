@@ -10,13 +10,9 @@
 
 namespace Volt {
 
-namespace{
-
 constexpr double kOrientationClusterToleranceRadians = 25.0 * PI / 180.0;
 constexpr double kOrientationNeighborVectorTolerance = 1e-4;
 constexpr double kOrientationBondAlignmentTolerance = 0.9063077870366499;
-
-}
 
 OrientationClusterRuleProvider::OrientationClusterRuleProvider(
     std::shared_ptr<const std::vector<OrientationClusterAtomState>> atomStates

@@ -21,8 +21,6 @@
 
 namespace Volt{
 
-namespace{
-
 std::mutex& topologyRegistryMutex(){
     static std::mutex mutex;
     return mutex;
@@ -251,8 +249,6 @@ bool equivalentTopologyEntries(const CrystalTopologyEntry& lhs, const CrystalTop
     }
 
     return true;
-}
-
 }
 
 CrystalTopologyRegistry::CrystalTopologyRegistry(std::vector<std::filesystem::path> searchRoots){

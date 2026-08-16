@@ -8,12 +8,8 @@
 
 namespace Volt::StructureIdentificationExport {
 
-namespace {
-
 std::string defaultStructureName(int structureType){
     return structureTypeName(structureType);
-}
-
 }
 
 void streamStructureIdentificationToParquet(

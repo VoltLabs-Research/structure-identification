@@ -19,8 +19,6 @@
 
 namespace Volt{
 
-namespace{
-
 bool assembleNeighborGraph(
     const LammpsParser::Frame& frame,
     StructureAnalysis& analysis,
@@ -120,20 +118,6 @@ bool assembleNeighborGraph(
     return true;
 }
 
-std::string sqlQuotePath(const std::string& path){
-    std::string out;
-    out.reserve(path.size() + 2);
-    out.push_back('\'');
-    for(char c : path){
-        if(c == '\'') out.push_back('\'');
-        out.push_back(c);
-    }
-    out.push_back('\'');
-    return out;
-}
-
-}
-
 ReconstructedStructureContext::ReconstructedStructureContext(
     ParticleProperty* positions,
     const SimulationCell& cell
@@ -162,8 +146,6 @@ bool ReconstructedStructureContext::loadStructureAndClusterFromFrame(
 
     return true;
 }
-
-namespace{
 
 template<typename Dest, typename Convert>
 bool readColumnInto(duckdb::Vector& vec, duckdb::idx_t count, const std::vector<int>& targetRow,
@@ -225,8 +207,6 @@ bool readDoubleColumn(duckdb::Vector& vec, duckdb::idx_t count, const std::vecto
     }
 }
 
-}
-
 bool ReconstructedStructureContext::loadNeighborTopologyFromParquet(
     const std::string& neighborParquetPath,
     const LammpsParser::Frame& frame,
@@ -257,7 +237,7 @@ bool ReconstructedStructureContext::loadNeighborTopologyFromParquet(
         duckdb::Connection con(*db);
 
         const std::string sql =
-            "SELECT * FROM read_parquet(" + sqlQuotePath(neighborParquetPath) + ")";
+            "SELECT * FROM read_parquet(" + Detail::sqlQuote(neighborParquetPath) + ")";
         auto result = con.Query(sql);
         if(result->HasError()){
             AnalysisDumpUtils::setError(errorMessage,

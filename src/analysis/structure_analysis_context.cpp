@@ -242,22 +242,6 @@ bool AnalysisContext::writeDumpWithContext(
     );
 }
 
-namespace{
-
-std::string sqlQuotePath(const std::string& path){
-    std::string out;
-    out.reserve(path.size() + 2);
-    out.push_back('\'');
-    for(char c : path){
-        if(c == '\'') out.push_back('\'');
-        out.push_back(c);
-    }
-    out.push_back('\'');
-    return out;
-}
-
-}
-
 bool streamNeighborTopologyToParquet(
     const std::string& filePath,
     const LammpsParser::Frame& frame,
@@ -328,7 +312,7 @@ bool streamNeighborTopologyToParquet(
         }
 
         const std::string copySql =
-            "COPY neighbors TO " + sqlQuotePath(filePath) +
+            "COPY neighbors TO " + Detail::sqlQuote(filePath) +
             " (FORMAT PARQUET, COMPRESSION ZSTD)";
         return !con.Query(copySql)->HasError();
     }catch(const std::exception&){

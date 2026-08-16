@@ -1,8 +1,6 @@
 #include <volt/analysis/structure_identification_export.h>
 
 #include <string>
-#include <string_view>
-#include <vector>
 
 #include <volt/structures/crystal_structure_types.h>
 
@@ -20,7 +18,6 @@ void streamStructureIdentificationToParquet(
     AtomColumnWriter atomColumnWriter
 ){
     const StructureContext& context = analysis.context();
-    const std::size_t natoms = context.atomCount();
     const int* structureTypes = context.structureTypes
         ? context.structureTypes->constDataInt()
         : nullptr;
@@ -32,14 +29,6 @@ void streamStructureIdentificationToParquet(
         return structureTypes ? structureTypes[i] : static_cast<int>(StructureType::OTHER);
     };
 
-    std::vector<std::string_view> topologyNames(natoms);
-    for(std::size_t atomIndex = 0; atomIndex < natoms; ++atomIndex){
-        if(const Cluster* cluster = analysis.atomCluster(static_cast<int>(atomIndex));
-           cluster && !cluster->topologyName.empty()){
-            topologyNames[atomIndex] = cluster->topologyName;
-        }
-    }
-
     streamAtomsToParquet(
         filePath,
         frame,
@@ -49,9 +38,6 @@ void streamStructureIdentificationToParquet(
         },
         [&](ColumnarAtomWriter& w, std::size_t i){
             w.field("cluster_id", atomClusters ? atomClusters[i] : 0);
-            if(i < topologyNames.size() && !topologyNames[i].empty()){
-                w.field("topology_name", std::string(topologyNames[i]));
-            }
             if(atomColumnWriter) atomColumnWriter(w, i, structureTypeFor(i));
         },
         [&](std::size_t i){ return structureTypeFor(i); },

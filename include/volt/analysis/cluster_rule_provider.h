@@ -38,6 +38,10 @@ public:
         return false;
     }
 
+    virtual bool allowsCrossStructureGrowth() const{
+        return false;
+    }
+
     virtual ClusterRuleDecision tryAssignNeighbor(
         const StructureAnalysis& analysis,
         const AnalysisContext& context,

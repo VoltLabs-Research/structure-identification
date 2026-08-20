@@ -117,8 +117,15 @@ void ClusterBuilder::grow(
             if(_context.atomClusters->getInt(neighborAtomIndex) != 0){
                 continue;
             }
-            if(_context.structureTypes->getInt(neighborAtomIndex) != structureType){
-                continue;
+
+            const int neighborStructureType = _context.structureTypes->getInt(neighborAtomIndex);
+            if(neighborStructureType != structureType){
+                const auto* crossProvider = _sa.clusterRuleProvider();
+                if(neighborStructureType == LATTICE_OTHER ||
+                   !crossProvider ||
+                   !crossProvider->allowsCrossStructureGrowth()){
+                    continue;
+                }
             }
 
             if(const auto* clusterRuleProvider = _sa.clusterRuleProvider()){

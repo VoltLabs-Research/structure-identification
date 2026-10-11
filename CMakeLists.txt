@@ -33,13 +33,29 @@ set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type")
 set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS Debug Release MinSizeRel RelWithDebInfo)
 
 # Find CoreToolkit dependency
-find_package(coretoolkit REQUIRED)
-find_package(TBB REQUIRED)
-find_package(Boost REQUIRED)
-find_package(spdlog REQUIRED)
-find_package(nlohmann_json REQUIRED)
-find_package(yaml-cpp REQUIRED)
-find_package(duckdb REQUIRED)
+if(NOT TARGET coretoolkit::coretoolkit)
+	find_package(coretoolkit REQUIRED)
+endif()
+if(NOT EMSCRIPTEN)
+	if(NOT TARGET TBB::tbb)
+		find_package(TBB REQUIRED)
+	endif()
+	if(NOT TARGET duckdb::duckdb)
+		find_package(duckdb REQUIRED)
+	endif()
+endif()
+if(NOT TARGET Boost::headers AND NOT TARGET Boost::boost AND NOT TARGET boost::headers AND NOT TARGET boost::boost)
+	find_package(Boost REQUIRED)
+endif()
+if(NOT TARGET spdlog::spdlog)
+	find_package(spdlog REQUIRED)
+endif()
+if(NOT TARGET nlohmann_json::nlohmann_json)
+	find_package(nlohmann_json REQUIRED)
+endif()
+if(NOT TARGET yaml-cpp::yaml-cpp)
+	find_package(yaml-cpp REQUIRED)
+endif()
 
 set(STRUCTURE_IDENTIFICATION_BOOST_TARGET "")
 if(TARGET Boost::headers)
@@ -55,41 +71,43 @@ else()
 endif()
 
 set(LIBRARY_SOURCES
-	${CMAKE_SOURCE_DIR}/src/analysis/structure_analysis_context.cpp
-	${CMAKE_SOURCE_DIR}/src/analysis/structure_identification_export.cpp
-	${CMAKE_SOURCE_DIR}/src/analysis/reconstructed_dump_utils.cpp
-	${CMAKE_SOURCE_DIR}/src/analysis/cluster_graph_io.cpp
-	${CMAKE_SOURCE_DIR}/src/analysis/cluster_graph_builder.cpp
-	${CMAKE_SOURCE_DIR}/src/analysis/orientation_cluster_rule_provider.cpp
-	${CMAKE_SOURCE_DIR}/src/analysis/crystal_topology_library.cpp
-	${CMAKE_SOURCE_DIR}/src/analysis/reconstructed_state_canonicalizer.cpp
-	${CMAKE_SOURCE_DIR}/src/analysis/structure_analysis.cpp
-	${CMAKE_SOURCE_DIR}/src/core/reconstructed_structure.cpp
-	${CMAKE_SOURCE_DIR}/src/structures/crystal_topology_registry.cpp
-	${CMAKE_SOURCE_DIR}/src/structures/cluster_graph.cpp
+	${CMAKE_CURRENT_SOURCE_DIR}/src/analysis/structure_analysis_context.cpp
+	${CMAKE_CURRENT_SOURCE_DIR}/src/analysis/structure_identification_export.cpp
+	${CMAKE_CURRENT_SOURCE_DIR}/src/analysis/reconstructed_dump_utils.cpp
+	${CMAKE_CURRENT_SOURCE_DIR}/src/analysis/cluster_graph_io.cpp
+	${CMAKE_CURRENT_SOURCE_DIR}/src/analysis/cluster_graph_builder.cpp
+	${CMAKE_CURRENT_SOURCE_DIR}/src/analysis/orientation_cluster_rule_provider.cpp
+	${CMAKE_CURRENT_SOURCE_DIR}/src/analysis/crystal_topology_library.cpp
+	${CMAKE_CURRENT_SOURCE_DIR}/src/analysis/reconstructed_state_canonicalizer.cpp
+	${CMAKE_CURRENT_SOURCE_DIR}/src/analysis/structure_analysis.cpp
+	${CMAKE_CURRENT_SOURCE_DIR}/src/core/reconstructed_structure.cpp
+	${CMAKE_CURRENT_SOURCE_DIR}/src/structures/crystal_topology_registry.cpp
+	${CMAKE_CURRENT_SOURCE_DIR}/src/structures/cluster_graph.cpp
 )
 
 add_library(${PROJECT_NAME} STATIC ${LIBRARY_SOURCES})
 set_target_properties(${PROJECT_NAME} PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
-target_include_directories(${PROJECT_NAME} PUBLIC ${CMAKE_SOURCE_DIR}/include)
+target_include_directories(${PROJECT_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_precompile_headers(${PROJECT_NAME} PRIVATE <volt/core/volt.h>)
 
-if(EXISTS "${CMAKE_SOURCE_DIR}/../OpenDXA/lattices")
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../OpenDXA/lattices")
 	target_compile_definitions(${PROJECT_NAME} PUBLIC
-		VOLT_OPENDXA_LATTICE_SOURCE_DIR="${CMAKE_SOURCE_DIR}/../OpenDXA/lattices"
+		VOLT_OPENDXA_LATTICE_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../OpenDXA/lattices"
 	)
 endif()
 
-target_link_libraries(${PROJECT_NAME} PUBLIC
+set(_SI_LINK
 	${STRUCTURE_IDENTIFICATION_BOOST_TARGET}
-	TBB::tbb
 	coretoolkit::coretoolkit
 	spdlog::spdlog
 	nlohmann_json::nlohmann_json
 	yaml-cpp::yaml-cpp
-	duckdb::duckdb
 )
+if(NOT EMSCRIPTEN)
+	list(APPEND _SI_LINK TBB::tbb duckdb::duckdb)
+endif()
+target_link_libraries(${PROJECT_NAME} PUBLIC ${_SI_LINK})
 
 install(TARGETS ${PROJECT_NAME} DESTINATION lib)
-install(DIRECTORY ${CMAKE_SOURCE_DIR}/include/ DESTINATION include)
+install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/ DESTINATION include)

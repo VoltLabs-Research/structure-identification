@@ -66,7 +66,8 @@ public:
         const LammpsParser::Frame& frame,
         const std::string& outputFilename,
         const StructureAnalysis* analysis = nullptr,
-        const std::vector<ExtraScalarColumn>& extraColumns = {}
+        const std::vector<ExtraScalarColumn>& extraColumns = {},
+        const std::vector<bool>* atomMask = nullptr
     ) const;
 
     AnalysisContext(
@@ -78,11 +79,16 @@ public:
     );
 };
 
+int contractAtomId(const LammpsParser::Frame& frame, std::size_t atomIndex);
+
+LammpsParser::Frame maskFrame(const LammpsParser::Frame& frame, const std::vector<bool>& atomMask);
+
 bool streamNeighborTopologyToParquet(
     const std::string& filePath,
     const LammpsParser::Frame& frame,
     const AnalysisContext& context,
-    const StructureAnalysis& analysis
+    const StructureAnalysis& analysis,
+    const std::vector<bool>* atomMask = nullptr
 );
 
 }

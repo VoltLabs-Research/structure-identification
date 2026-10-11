@@ -83,8 +83,6 @@ void ClusterBuilder::grow(
     Matrix_3<double>& orientationW,
     int structureType
 ){
-    const int coordinationNumber = _sa.coordinationNumber(structureType);
-
     while(!atomsToVisit.empty()){
         int currentAtomIndex = atomsToVisit.front();
         atomsToVisit.pop_front();
@@ -93,6 +91,10 @@ void ClusterBuilder::grow(
         if(currentSymmetryPermutation < 0){
             continue;
         }
+        const int currentStructureType = _context.structureTypes
+            ? _context.structureTypes->getInt(static_cast<size_t>(currentAtomIndex))
+            : structureType;
+        const int coordinationNumber = _sa.coordinationNumber(currentStructureType);
         
         for(int neighborIndex = 0; neighborIndex < coordinationNumber; neighborIndex++){
             const int neighborAtomIndex = _sa.getNeighbor(currentAtomIndex, neighborIndex);
@@ -100,8 +102,8 @@ void ClusterBuilder::grow(
                 continue;
             }
 
-            const int latticeVectorIndex = _sa.symmetryPermutationEntry(structureType, currentSymmetryPermutation, neighborIndex);
-            const Vector3& latticeVector = _sa.latticeVector(structureType, latticeVectorIndex);
+            const int latticeVectorIndex = _sa.symmetryPermutationEntry(currentStructureType, currentSymmetryPermutation, neighborIndex);
+            const Vector3& latticeVector = _sa.latticeVector(currentStructureType, latticeVectorIndex);
             const Vector3& spatialVector = _context.simCell.wrapVector(
                 _context.positions->getPoint3(static_cast<size_t>(neighborAtomIndex)) -
                 _context.positions->getPoint3(static_cast<size_t>(currentAtomIndex))
@@ -119,7 +121,7 @@ void ClusterBuilder::grow(
             }
 
             const int neighborStructureType = _context.structureTypes->getInt(neighborAtomIndex);
-            if(neighborStructureType != structureType){
+            if(neighborStructureType != currentStructureType){
                 const auto* crossProvider = _sa.clusterRuleProvider();
                 if(neighborStructureType == LATTICE_OTHER ||
                    !crossProvider ||
@@ -137,7 +139,7 @@ void ClusterBuilder::grow(
                     currentAtomIndex,
                     neighborAtomIndex,
                     neighborIndex,
-                    structureType,
+                    currentStructureType,
                     resolvedNeighborSymmetry
                 )){
                     case ClusterRuleDecision::Accepted:
@@ -159,7 +161,7 @@ void ClusterBuilder::grow(
 
             for(int axis = 0; axis < 3; axis++){
                 if(axis != 2){
-                    int commonNeighbor = _sa.commonNeighborIndex(structureType, neighborIndex, axis);
+                    int commonNeighbor = _sa.commonNeighborIndex(currentStructureType, neighborIndex, axis);
                     if(commonNeighbor < 0){
                         properOverlap = false;
                         break;
@@ -172,28 +174,28 @@ void ClusterBuilder::grow(
                     }
                     
                     const int commonNeighborSlot = _sa.symmetryPermutationEntry(
-                        structureType,
+                        currentStructureType,
                         currentSymmetryPermutation,
                         commonNeighbor
                     );
 
                     const int bondNeighborSlot = _sa.symmetryPermutationEntry(
-                        structureType,
+                        currentStructureType,
                         currentSymmetryPermutation,
                         neighborIndex
                     );
 
-                    const Vector3 commonNeighborVector = _sa.latticeVector(structureType, commonNeighborSlot);
-                    const Vector3 bondNeighborVector = _sa.latticeVector(structureType, bondNeighborSlot);
+                    const Vector3 commonNeighborVector = _sa.latticeVector(currentStructureType, commonNeighborSlot);
+                    const Vector3 bondNeighborVector = _sa.latticeVector(currentStructureType, bondNeighborSlot);
                     currentLocalBasis.column(axis) = commonNeighborVector - bondNeighborVector;
                 }else{
                     matchedAtomIndices[static_cast<std::size_t>(axis)] = currentAtomIndex;
                     const int bondNeighborSlot = _sa.symmetryPermutationEntry(
-                        structureType,
+                        currentStructureType,
                         currentSymmetryPermutation,
                         neighborIndex
                     );
-                    const Vector3 bondVector = _sa.latticeVector(structureType, bondNeighborSlot);
+                    const Vector3 bondVector = _sa.latticeVector(currentStructureType, bondNeighborSlot);
                     currentLocalBasis.column(axis) = -bondVector;
                 }
             }
@@ -216,7 +218,7 @@ void ClusterBuilder::grow(
                     break;
                 }
 
-                neighborCanonicalBasis.column(axis) = _sa.latticeVector(structureType, reverseSlot);
+                neighborCanonicalBasis.column(axis) = _sa.latticeVector(currentStructureType, reverseSlot);
             }
 
             if(!properReverseOverlap){
@@ -229,12 +231,12 @@ void ClusterBuilder::grow(
             }
 
             const Matrix3 transition = currentLocalBasis * neighborCanonicalBasisInverse;
-            const int neighborSymmetryCount = _sa.symmetryPermutationCount(structureType);
+            const int neighborSymmetryCount = _sa.symmetryPermutationCount(currentStructureType);
             for(int symmetryIndex = 0; symmetryIndex < neighborSymmetryCount; ++symmetryIndex){
                 if(!symmetryAllowed(allowedMask, symmetryIndex)){
                     continue;
                 }
-                if(!transition.equals(_sa.symmetryTransformation(structureType, symmetryIndex), CA_TRANSITION_MATRIX_EPSILON)){
+                if(!transition.equals(_sa.symmetryTransformation(currentStructureType, symmetryIndex), CA_TRANSITION_MATRIX_EPSILON)){
                     continue;
                 }
 

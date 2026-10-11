@@ -59,9 +59,10 @@ inline bool appendClusterOutputs(
     StructureAnalysis& analysis,
     nlohmann::json& result,
     std::string* errorMessage,
-    const std::vector<AnalysisContext::ExtraScalarColumn>& extraColumns = {}
+    const std::vector<AnalysisContext::ExtraScalarColumn>& extraColumns = {},
+    const std::vector<bool>* atomMask = nullptr
 ){
-    if(!context.writeDumpWithContext(frame, inputDumpPath, &analysis, extraColumns)){
+    if(!context.writeDumpWithContext(frame, inputDumpPath, &analysis, extraColumns, atomMask)){
         if(errorMessage){
             *errorMessage = "Failed to write " + inputDumpPath;
         }
@@ -85,7 +86,7 @@ inline bool appendClusterOutputs(
     result["cluster_transitions_table"] = clusterGraphPaths.clusterTransitionsTablePath;
 
     const std::string neighborLatticePath = outputBase + "_neighbor_lattice.parquet";
-    if(!streamNeighborTopologyToParquet(neighborLatticePath, frame, context, analysis)){
+    if(!streamNeighborTopologyToParquet(neighborLatticePath, frame, context, analysis, atomMask)){
         if(errorMessage){
             *errorMessage = "Failed to write " + neighborLatticePath;
         }

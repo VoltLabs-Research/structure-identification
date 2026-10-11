@@ -190,7 +190,14 @@ CrystalTopologyEntry parseTopologyEntry(const std::filesystem::path& filePath){
     }
     entry.symmetries = generateSymmetryPermutations(entry);
     if(entry.symmetries.empty()){
-        throw std::runtime_error("Failed to derive symmetry permutations from neighbor_vectors.");
+        CrystalTopologySymmetry identity;
+        identity.transformation = Matrix3::Identity();
+        identity.permutation.fill(-1);
+        const int count = std::min(entry.coordinationNumber, static_cast<int>(identity.permutation.size()));
+        for(int index = 0; index < count; ++index){
+            identity.permutation[static_cast<std::size_t>(index)] = index;
+        }
+        entry.symmetries.push_back(identity);
     }
 
     return entry;

@@ -4,9 +4,11 @@
 #include <volt/structures/crystal_structure_types.h>
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <stdexcept>
 #include <string>
+#include <utility>
 
 #include <tbb/blocked_range.h>
 #include <tbb/parallel_for.h>
@@ -210,32 +212,110 @@ AnalysisContext::ExportedContext AnalysisContext::exportContext(
     return exported;
 }
 
+int contractAtomId(const LammpsParser::Frame& frame, std::size_t atomIndex){
+    return atomIndex < frame.ids.size()
+        ? frame.ids[atomIndex]
+        : static_cast<int>(atomIndex + 1);
+}
+
+LammpsParser::Frame maskFrame(const LammpsParser::Frame& frame, const std::vector<bool>& atomMask){
+    const std::size_t sourceCount = frame.positions.size();
+    const std::size_t keptCount = static_cast<std::size_t>(
+        std::count(atomMask.begin(), atomMask.end(), true));
+
+    LammpsParser::Frame subset;
+    subset.timestep = frame.timestep;
+    subset.natoms = static_cast<int>(keptCount);
+    subset.simulationCell = frame.simulationCell;
+    subset.headerOrder = frame.headerOrder;
+    subset.headerProperties = frame.headerProperties;
+    subset.atomColumnOrder = frame.atomColumnOrder;
+    subset.atomColumnsScaled = frame.atomColumnsScaled;
+
+    const bool hasTypes = frame.types.size() == sourceCount;
+    const bool hasImages = frame.hasImageFlags() && frame.imageX.size() == sourceCount;
+    subset.positions.reserve(keptCount);
+    subset.ids.reserve(keptCount);
+    if(hasTypes){
+        subset.types.reserve(keptCount);
+    }
+    for(std::size_t atomIndex = 0; atomIndex < sourceCount; ++atomIndex){
+        if(atomIndex >= atomMask.size() || !atomMask[atomIndex]){
+            continue;
+        }
+        subset.positions.push_back(frame.positions[atomIndex]);
+        subset.ids.push_back(contractAtomId(frame, atomIndex));
+        if(hasTypes){
+            subset.types.push_back(frame.types[atomIndex]);
+        }
+        if(hasImages){
+            subset.imageX.push_back(frame.imageX[atomIndex]);
+            subset.imageY.push_back(frame.imageY[atomIndex]);
+            subset.imageZ.push_back(frame.imageZ[atomIndex]);
+        }
+    }
+
+    for(const auto& [name, column] : frame.atomProperties){
+        if(column.size() != sourceCount){
+            continue;
+        }
+        LammpsParser::AtomColumn filtered;
+        filtered.dataType = column.dataType;
+        for(std::size_t atomIndex = 0; atomIndex < sourceCount; ++atomIndex){
+            if(atomIndex >= atomMask.size() || !atomMask[atomIndex]){
+                continue;
+            }
+            switch(column.dataType){
+                case DataType::Int:
+                    filtered.ints.push_back(column.ints[atomIndex]);
+                    break;
+                case DataType::Int64:
+                    filtered.int64s.push_back(column.int64s[atomIndex]);
+                    break;
+                case DataType::Double:
+                    filtered.doubles.push_back(column.doubles[atomIndex]);
+                    break;
+                case DataType::Void:
+                    break;
+            }
+        }
+        subset.atomProperties.emplace(name, std::move(filtered));
+    }
+
+    return subset;
+}
+
 bool AnalysisContext::writeDumpWithContext(
     const LammpsParser::Frame& frame,
     const std::string& outputFilename,
     const StructureAnalysis* analysis,
-    const std::vector<ExtraScalarColumn>& extraColumns
+    const std::vector<ExtraScalarColumn>& extraColumns,
+    const std::vector<bool>* atomMask
 ) const{
     LammpsParser parser;
     const auto exported = exportContext(analysis, extraColumns);
 
-    const std::vector<int>* atomIds = nullptr;
-    std::vector<int> generatedAtomIds;
-
-    if(frame.ids.size() == atomCount()){
-        atomIds = &frame.ids;
-    }else{
-        generatedAtomIds.resize(atomCount());
-        for(std::size_t atomIndex = 0; atomIndex < atomCount(); ++atomIndex){
-            generatedAtomIds[atomIndex] = static_cast<int>(atomIndex);
-        }
-        atomIds = &generatedAtomIds;
+    std::vector<int> propertyAtomIds(atomCount());
+    for(std::size_t atomIndex = 0; atomIndex < atomCount(); ++atomIndex){
+        propertyAtomIds[atomIndex] = contractAtomId(frame, atomIndex);
     }
 
+    if(!atomMask){
+        return parser.writeFileMergedWithExtraColumns(
+            outputFilename,
+            frame,
+            propertyAtomIds,
+            exported.columns,
+            exported.headers,
+            true
+        );
+    }
+
+    const LammpsParser::Frame subset = maskFrame(frame, *atomMask);
     return parser.writeFileMergedWithExtraColumns(
         outputFilename,
-        frame,
-        *atomIds,
+        subset,
+        propertyAtomIds,
         exported.columns,
         exported.headers,
         true
@@ -246,7 +326,8 @@ bool streamNeighborTopologyToParquet(
     const std::string& filePath,
     const LammpsParser::Frame& frame,
     const AnalysisContext& context,
-    const StructureAnalysis& analysis
+    const StructureAnalysis& analysis,
+    const std::vector<bool>* atomMask
 ){
     using namespace AnalysisContextDetail;
 
@@ -257,16 +338,13 @@ bool streamNeighborTopologyToParquet(
     const int* indexData = neighborIndices->constDataInt();
     const double* latticeData = neighborLattice->constDataDouble();
 
-    const std::vector<int>* atomIds = nullptr;
-    std::vector<int> generatedAtomIds;
-    if(frame.ids.size() == atomCount){
-        atomIds = &frame.ids;
-    }else{
-        generatedAtomIds.resize(atomCount);
-        for(std::size_t atomIndex = 0; atomIndex < atomCount; ++atomIndex){
-            generatedAtomIds[atomIndex] = static_cast<int>(atomIndex);
+    std::vector<int> compactIndex(atomCount, -1);
+    int nextCompactIndex = 0;
+    for(std::size_t atomIndex = 0; atomIndex < atomCount; ++atomIndex){
+        if(atomMask && (atomIndex >= atomMask->size() || !(*atomMask)[atomIndex])){
+            continue;
         }
-        atomIds = &generatedAtomIds;
+        compactIndex[atomIndex] = nextCompactIndex++;
     }
 
     try{
@@ -290,21 +368,30 @@ bool streamNeighborTopologyToParquet(
         {
             duckdb::Appender appender(con, "neighbors");
             for(std::size_t atomIndex = 0; atomIndex < atomCount; ++atomIndex){
+                if(compactIndex[atomIndex] < 0){
+                    continue;
+                }
                 appender.BeginRow();
-                appender.Append<std::uint64_t>(static_cast<std::uint64_t>((*atomIds)[atomIndex]));
-                appender.Append<std::uint32_t>(static_cast<std::uint32_t>(atomIndex));
+                appender.Append<std::uint64_t>(static_cast<std::uint64_t>(contractAtomId(frame, atomIndex)));
+                appender.Append<std::uint32_t>(static_cast<std::uint32_t>(compactIndex[atomIndex]));
 
                 const std::size_t indexBase = atomIndex * static_cast<std::size_t>(MAX_NEIGHBORS);
+                std::array<int, MAX_NEIGHBORS> remapped{};
                 for(int slot = 0; slot < MAX_NEIGHBORS; ++slot){
-                    appender.Append<std::int32_t>(indexData[indexBase + static_cast<std::size_t>(slot)]);
+                    const int neighborIndex = indexData[indexBase + static_cast<std::size_t>(slot)];
+                    remapped[static_cast<std::size_t>(slot)] = neighborIndex >= 0
+                        ? compactIndex[static_cast<std::size_t>(neighborIndex)]
+                        : -1;
+                    appender.Append<std::int32_t>(remapped[static_cast<std::size_t>(slot)]);
                 }
 
                 const std::size_t latticeBase = atomIndex * static_cast<std::size_t>(MAX_NEIGHBORS) * 3;
                 for(int slot = 0; slot < MAX_NEIGHBORS; ++slot){
                     const std::size_t component = latticeBase + static_cast<std::size_t>(slot) * 3;
-                    appender.Append<double>(latticeData[component + 0]);
-                    appender.Append<double>(latticeData[component + 1]);
-                    appender.Append<double>(latticeData[component + 2]);
+                    const bool kept = remapped[static_cast<std::size_t>(slot)] >= 0;
+                    appender.Append<double>(kept ? latticeData[component + 0] : 0.0);
+                    appender.Append<double>(kept ? latticeData[component + 1] : 0.0);
+                    appender.Append<double>(kept ? latticeData[component + 2] : 0.0);
                 }
                 appender.EndRow();
             }

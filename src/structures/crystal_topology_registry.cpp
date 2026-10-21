@@ -106,7 +106,8 @@ std::vector<std::filesystem::path> defaultTopologySearchRoots(){
     roots.emplace_back(std::filesystem::path(VOLT_OPENDXA_LATTICE_SOURCE_DIR));
 #endif
 
-#if defined(__linux__)
+// A WebAssembly build's /proc/self/exe is the program file (coretoolkit's compat/wasm shell).
+#if defined(__linux__) || defined(__EMSCRIPTEN__)
     std::array<char, 4096> buffer{};
     const ssize_t length = ::readlink("/proc/self/exe", buffer.data(), buffer.size() - 1);
     if(length > 0){

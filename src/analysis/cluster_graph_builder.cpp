@@ -1,6 +1,7 @@
 #include <volt/analysis/cluster_graph_builder.h>
 #include <volt/analysis/cluster_hierarchy_rebuilder.h>
 #include <volt/analysis/cluster_rule_provider.h>
+#include <volt/core/progress.h>
 
 #include <spdlog/spdlog.h>
 #include <tbb/parallel_for.h>
@@ -19,6 +20,19 @@ constexpr bool symmetryAllowed(std::uint64_t mask, int symmetryIndex){
         && symmetryIndex < 63
         && (mask & (std::uint64_t{1} << symmetryIndex)) != 0;
 }
+
+// grow() is public and its signature has no room for a reporter, so buildClusterAssignments()
+// lends it one for the duration of the flood fill.
+static thread_local ProgressReporter* growthProgress = nullptr;
+
+struct GrowthProgressScope{
+    explicit GrowthProgressScope(ProgressReporter& progress){
+        growthProgress = &progress;
+    }
+    ~GrowthProgressScope(){
+        growthProgress = nullptr;
+    }
+};
 
 }
 
@@ -83,9 +97,13 @@ void ClusterBuilder::grow(
     Matrix_3<double>& orientationW,
     int structureType
 ){
+    ProgressReporter* const progress = growthProgress;
     while(!atomsToVisit.empty()){
         int currentAtomIndex = atomsToVisit.front();
         atomsToVisit.pop_front();
+        if(progress){
+            progress->advance();
+        }
 
         const int currentSymmetryPermutation = _context.atomSymmetryPermutations->getInt(static_cast<size_t>(currentAtomIndex));
         if(currentSymmetryPermutation < 0){
@@ -438,6 +456,19 @@ void ClusterBuilder::reorientAtomsToAlign(){
 }
 
 void ClusterBuilder::buildClusterAssignments(){
+    std::size_t crystallineAtoms = 0;
+    for(size_t atomIndex = 0; atomIndex < _context.atomCount(); ++atomIndex){
+        if(!alreadyProcessedAtom(atomIndex)){
+            ++crystallineAtoms;
+        }
+    }
+    spdlog::info("  Growing clusters from {} crystalline atoms...", crystallineAtoms);
+
+    const std::size_t initialClusterCount = _sa.clusterGraph().clusters().size();
+    std::size_t unclusteredSeeds = 0;
+    ProgressReporter progress("  Growing clusters", crystallineAtoms);
+    const GrowthProgressScope progressScope(progress);
+
     for(size_t seedAtomIndex = 0; seedAtomIndex < _context.atomCount(); seedAtomIndex++){
         if(alreadyProcessedAtom(seedAtomIndex)) continue;
 
@@ -445,6 +476,7 @@ void ClusterBuilder::buildClusterAssignments(){
         const int seedSymmetryPermutation = selectInitialSymmetryPermutation(static_cast<int>(seedAtomIndex), structureType);
         if(seedSymmetryPermutation < 0){
             _context.structureTypes->setInt(seedAtomIndex, LATTICE_OTHER);
+            ++unclusteredSeeds;
             continue;
         }
 
@@ -489,6 +521,16 @@ void ClusterBuilder::buildClusterAssignments(){
                 applyPreferredOrientation(cluster);
             }
         }
+    }
+
+    spdlog::info(
+        "  Grew {} clusters covering {} atoms in {}",
+        _sa.clusterGraph().clusters().size() - initialClusterCount,
+        progress.done(),
+        progress.elapsed()
+    );
+    if(unclusteredSeeds > 0){
+        spdlog::info("  {} atoms have no allowed symmetry permutation; left unclustered as Other", unclusteredSeeds);
     }
 }
 

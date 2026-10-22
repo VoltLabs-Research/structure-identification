@@ -1,5 +1,6 @@
 #include <volt/analysis/reconstructed_state_canonicalizer.h>
 #include <volt/structures/crystal_topology_registry.h>
+#include <volt/core/progress.h>
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -368,6 +369,7 @@ void canonicalizeSymmetryPermutationsImpl(
     const std::size_t atomCount = context.atomCount();
     std::vector<int> canonicalSymmetry(atomCount, -1);
 
+    std::size_t eligibleAtoms = 0;
     for(std::size_t atomIndex = 0; atomIndex < atomCount; ++atomIndex){
         if(!shouldVisitAtom(context, atomIndex, requireAssignedCluster)){
             continue;
@@ -377,8 +379,10 @@ void canonicalizeSymmetryPermutationsImpl(
             continue;
         }
         canonicalSymmetry[atomIndex] = -1;
+        ++eligibleAtoms;
     }
 
+    ProgressReporter progress("  Canonicalizing symmetry permutations", eligibleAtoms);
     std::deque<int> atomsToVisit;
     for(std::size_t seedAtomIndex = 0; seedAtomIndex < atomCount; ++seedAtomIndex){
         if(!shouldVisitAtom(context, seedAtomIndex, requireAssignedCluster)){
@@ -412,6 +416,7 @@ void canonicalizeSymmetryPermutationsImpl(
         while(!atomsToVisit.empty()){
             const int currentAtomIndex = atomsToVisit.front();
             atomsToVisit.pop_front();
+            progress.advance();
 
             const int currentSymmetry = canonicalSymmetry[static_cast<std::size_t>(currentAtomIndex)];
             if(currentSymmetry < 0){

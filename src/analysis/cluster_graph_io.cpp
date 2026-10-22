@@ -4,6 +4,8 @@
 #include <volt/analysis/reconstructed_dump_utils.h>
 #include <volt/structures/crystal_topology_registry.h>
 
+#include <spdlog/spdlog.h>
+
 #include <algorithm>
 #include <array>
 #include <fstream>
@@ -452,7 +454,8 @@ bool rebuildClusterGraph(
 
 bool writeClustersTable(
     ClusterGraph& clusterGraph,
-    const std::string& outputPath
+    const std::string& outputPath,
+    std::size_t& rowCount
 ){
     std::ofstream output(outputPath);
     if(!output.is_open()){
@@ -468,7 +471,8 @@ bool writeClustersTable(
     }
     output << '\n';
 
-    for(Cluster* cluster : sortedClusters(clusterGraph)){
+    const std::vector<Cluster*> clusters = sortedClusters(clusterGraph);
+    for(Cluster* cluster : clusters){
         output
             << cluster->id
             << '\t' << (cluster->topologyName.empty() ? kUnknownTopologyToken : cluster->topologyName);
@@ -476,12 +480,14 @@ bool writeClustersTable(
         output << '\n';
     }
 
+    rowCount = clusters.size();
     return output.good();
 }
 
 bool writeClusterTransitionsTable(
     const ClusterGraph& clusterGraph,
-    const std::string& outputPath
+    const std::string& outputPath,
+    std::size_t& rowCount
 ){
     std::ofstream output(outputPath);
     if(!output.is_open()){
@@ -507,6 +513,7 @@ bool writeClusterTransitionsTable(
         output << '\n';
     }
 
+    rowCount = transitions.size();
     return output.good();
 }
 
@@ -530,12 +537,15 @@ bool exportClusterGraph(
     const std::string clustersTablePath = outputBase + kClustersSuffix;
     const std::string clusterTransitionsTablePath = outputBase + kClusterTransitionsSuffix;
 
-    if(!writeClustersTable(clusterGraph, clustersTablePath)){
+    std::size_t clusterRows = 0;
+    std::size_t transitionRows = 0;
+    if(!writeClustersTable(clusterGraph, clustersTablePath, clusterRows)){
         return false;
     }
-    if(!writeClusterTransitionsTable(clusterGraph, clusterTransitionsTablePath)){
+    if(!writeClusterTransitionsTable(clusterGraph, clusterTransitionsTablePath, transitionRows)){
         return false;
     }
+    spdlog::info("  Cluster graph written: {} clusters, {} transitions", clusterRows, transitionRows);
 
     if(paths){
         paths->clustersTablePath = clustersTablePath;

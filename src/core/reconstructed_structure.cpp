@@ -1,8 +1,9 @@
 #include <volt/core/reconstructed_structure.h>
 
-#include <chrono>
 #include <volt/analysis/reconstructed_dump_utils.h>
+#include <volt/core/progress.h>
 
+#include <spdlog/spdlog.h>
 #include <tbb/parallel_for.h>
 #include <tbb/parallel_reduce.h>
 #include <tbb/blocked_range.h>
@@ -421,33 +422,38 @@ bool ReconstructedStructureLoader::load(
     ReconstructedStructureContext& context,
     std::string* errorMessage
 ){
-    auto mark = [](std::chrono::steady_clock::time_point& since){
-        const auto now = std::chrono::steady_clock::now();
-        const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now - since).count();
-        since = now;
-        return ms;
-    };
-    auto since = std::chrono::steady_clock::now();
+    Stopwatch timer;
 
     if(!ReconstructedStructureContext::loadStructureAndClusterFromFrame(frame, context, errorMessage)){
         return false;
     }
-    const auto fromFrameMs = mark(since);
+    timer.restart();
 
     if(!ReconstructedStructureContext::loadNeighborTopologyFromParquet(
         neighborParquetPath, frame, structureAnalysis, context, errorMessage)){
         return false;
     }
-    const auto neighborParquetMs = mark(since);
+    const std::size_t neighborEntries = context.neighborIndices ? context.neighborIndices->size() : 0;
+    spdlog::info(
+        "  Neighbor lattice loaded: {} atoms, {:.1f} neighbors per atom, max neighbor distance {:.3f} in {}",
+        frame.natoms,
+        frame.natoms > 0 ? static_cast<double>(neighborEntries) / frame.natoms : 0.0,
+        context.maximumNeighborDistance,
+        timer.elapsed()
+    );
+    timer.restart();
 
+    const ClusterGraph& graph = structureAnalysis.clusterGraph();
+    const std::size_t initialClusterCount = graph.clusters().size();
+    const std::size_t initialTransitionCount = graph.clusterTransitions().size();
     if(!importClusterGraph(structureAnalysis, paths, errorMessage)){
         return false;
     }
-    const auto clusterGraphMs = mark(since);
-
     spdlog::info(
-        "  reconstruction: {}ms per-atom columns from dump, {}ms neighbor_lattice.parquet, {}ms cluster graph",
-        fromFrameMs, neighborParquetMs, clusterGraphMs
+        "  Cluster graph imported: {} clusters, {} transitions in {}",
+        graph.clusters().size() - initialClusterCount,
+        graph.clusterTransitions().size() - initialTransitionCount,
+        timer.elapsed()
     );
 
     return true;

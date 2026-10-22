@@ -1,6 +1,7 @@
 #include <volt/analysis/structure_analysis_context.h>
 #include <volt/analysis/reconstructed_dump_utils.h>
 #include <volt/analysis/structure_analysis.h>
+#include <volt/core/progress.h>
 #include <volt/structures/crystal_structure_types.h>
 
 #include <algorithm>
@@ -10,6 +11,7 @@
 #include <string>
 #include <utility>
 
+#include <spdlog/spdlog.h>
 #include <tbb/blocked_range.h>
 #include <tbb/parallel_for.h>
 
@@ -292,6 +294,7 @@ bool AnalysisContext::writeDumpWithContext(
     const std::vector<ExtraScalarColumn>& extraColumns,
     const std::vector<bool>* atomMask
 ) const{
+    const Stopwatch timer;
     LammpsParser parser;
     const auto exported = exportContext(analysis, extraColumns);
 
@@ -300,26 +303,33 @@ bool AnalysisContext::writeDumpWithContext(
         propertyAtomIds[atomIndex] = contractAtomId(frame, atomIndex);
     }
 
+    const auto reportWritten = [&](bool written){
+        if(written){
+            spdlog::info("  Annotated dump written to {} in {}", outputFilename, timer.elapsed());
+        }
+        return written;
+    };
+
     if(!atomMask){
-        return parser.writeFileMergedWithExtraColumns(
+        return reportWritten(parser.writeFileMergedWithExtraColumns(
             outputFilename,
             frame,
             propertyAtomIds,
             exported.columns,
             exported.headers,
             true
-        );
+        ));
     }
 
     const LammpsParser::Frame subset = maskFrame(frame, *atomMask);
-    return parser.writeFileMergedWithExtraColumns(
+    return reportWritten(parser.writeFileMergedWithExtraColumns(
         outputFilename,
         subset,
         propertyAtomIds,
         exported.columns,
         exported.headers,
         true
-    );
+    ));
 }
 
 bool streamNeighborTopologyToParquet(

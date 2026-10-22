@@ -71,6 +71,7 @@ int ClusterBuilder::selectInitialSymmetryPermutation(int atomIndex, int structur
 }
 
 void ClusterBuilder::dissolveSmallClusters(int minClusterSize){
+    std::size_t dissolvedClusters = 0;
     for(Cluster* cluster : _sa.clusterGraph().clusters()){
         if(!cluster){
             continue;
@@ -87,7 +88,9 @@ void ClusterBuilder::dissolveSmallClusters(int minClusterSize){
 
         cluster->structure = LATTICE_OTHER;
         cluster->topologyName.clear();
+        ++dissolvedClusters;
     }
+    spdlog::info("  Marked {} clusters smaller than {} atoms as Other", dissolvedClusters, minClusterSize);
 }
 
 void ClusterBuilder::grow(
@@ -602,6 +605,9 @@ void ClusterBuilder::formSuperClusters(){
     }
 
     ClusterHierarchyUtils::rebuildParentHierarchy(_sa, superClusterTransitions);
+    if(!superClusterTransitions.empty()){
+        spdlog::info("  Bridged {} cluster pairs across defect clusters", superClusterTransitions.size());
+    }
 }
 
 Cluster* ClusterBuilder::startNew(int atomIndex, int structureType){

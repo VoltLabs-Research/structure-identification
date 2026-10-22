@@ -341,6 +341,7 @@ bool streamNeighborTopologyToParquet(
 ){
     using namespace AnalysisContextDetail;
 
+    const Stopwatch timer;
     const std::size_t atomCount = context.atomCount();
 
     const auto neighborIndices = makeNeighborIndicesProperty(context);
@@ -371,13 +372,17 @@ bool streamNeighborTopologyToParquet(
             ddl += ", \"" + AnalysisDumpUtils::neighborLatticeComponentName('z', slot) + "\" DOUBLE";
         }
         ddl += ')';
-        if(con.Query(ddl)->HasError()){
+        auto ddlResult = con.Query(ddl);
+        if(ddlResult->HasError()){
+            spdlog::error("  Neighbor lattice export to {} failed: {}", filePath, ddlResult->GetError());
             return false;
         }
 
         {
             duckdb::Appender appender(con, "neighbors");
+            ProgressReporter progress("  Writing neighbor lattice", atomCount);
             for(std::size_t atomIndex = 0; atomIndex < atomCount; ++atomIndex){
+                progress.update(atomIndex);
                 if(compactIndex[atomIndex] < 0){
                     continue;
                 }
@@ -411,8 +416,15 @@ bool streamNeighborTopologyToParquet(
         const std::string copySql =
             "COPY neighbors TO " + Detail::sqlQuote(filePath) +
             " (FORMAT PARQUET, COMPRESSION ZSTD)";
-        return !con.Query(copySql)->HasError();
-    }catch(const std::exception&){
+        auto copyResult = con.Query(copySql);
+        if(copyResult->HasError()){
+            spdlog::error("  Neighbor lattice export to {} failed: {}", filePath, copyResult->GetError());
+            return false;
+        }
+        spdlog::info("  Neighbor lattice written to {} ({} atoms) in {}", filePath, nextCompactIndex, timer.elapsed());
+        return true;
+    }catch(const std::exception& error){
+        spdlog::error("  Neighbor lattice export to {} failed: {}", filePath, error.what());
         return false;
     }
 }

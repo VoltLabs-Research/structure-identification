@@ -163,7 +163,7 @@ void StructureAnalysis::appendNeighbors(const std::vector<std::vector<int>>& ext
 
     if(trimmedNeighborCount > 0){
         spdlog::warn(
-            "appendNeighbors trimmed {} appended neighbors across {} atoms to respect MAX_NEIGHBORS={}",
+            "  Trimmed {} appended neighbors across {} atoms to respect MAX_NEIGHBORS={}",
             trimmedNeighborCount,
             affectedAtomCount,
             static_cast<int>(MAX_NEIGHBORS)

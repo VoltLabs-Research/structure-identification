@@ -374,9 +374,11 @@ bool ClusterBuilder::calculateMisorientation(
 }
 
 void ClusterBuilder::connectClusters(){
+    ProgressReporter progress("  Connecting clusters", _context.atomCount());
     std::vector<std::vector<int>> extras(_context.atomCount());
 
     for(size_t atomIndex = 0; atomIndex < _context.atomCount(); ++atomIndex){
+        progress.update(atomIndex);
         int clusterId = _context.atomClusters->getInt(atomIndex);
         if(clusterId == 0){
             continue;
@@ -423,7 +425,11 @@ void ClusterBuilder::connectClusters(){
     }
 
     _sa.appendNeighbors(extras);
-    spdlog::info("Number of cluster transitions: {}", _sa.clusterGraph().clusterTransitions().size());
+    spdlog::info(
+        "  Connected clusters: {} transitions in {}",
+        _sa.clusterGraph().clusterTransitions().size(),
+        progress.elapsed()
+    );
 }
 
 void ClusterBuilder::reorientAtomsToAlign(){

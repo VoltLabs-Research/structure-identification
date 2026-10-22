@@ -1,6 +1,7 @@
 #include <volt/analysis/reconstructed_state_canonicalizer.h>
 #include <volt/structures/crystal_topology_registry.h>
 #include <volt/core/progress.h>
+#include <spdlog/spdlog.h>
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -569,8 +570,14 @@ void ReconstructedStateCanonicalizer::canonicalizeNeighborShellsToExportConventi
         }
     };
 
+    std::size_t geometryRemappedAtoms = 0;
+    std::size_t permutationRemappedAtoms = 0;
+    std::size_t localOrderAtoms = 0;
+    ProgressReporter progress("  Reordering neighbor shells", atomCount);
+
     int* newIndices = reorderedIndices->dataInt();
     for(std::size_t atomIndex = 0; atomIndex < atomCount; ++atomIndex){
+        progress.update(atomIndex);
         const int structureType = context.structureTypes->getInt(atomIndex);
         const int count = std::max(0, std::min(context.neighborCounts->getInt(atomIndex), static_cast<int>(MAX_NEIGHBORS)));
         const int start = oldOffsets[atomIndex];
@@ -585,6 +592,7 @@ void ReconstructedStateCanonicalizer::canonicalizeNeighborShellsToExportConventi
         if(!topology || topology->coordinationNumber <= 0 || topology->symmetries.empty() ||
            currentSymmetry < 0 || currentSymmetry >= analysis.symmetryPermutationCount(structureType)){
             writeFallbackVectors(atomIndex, structureType, count, currentSymmetry);
+            ++localOrderAtoms;
             continue;
         }
 
@@ -615,6 +623,7 @@ void ReconstructedStateCanonicalizer::canonicalizeNeighborShellsToExportConventi
                 ] = topology->neighborVectors[static_cast<std::size_t>(exportSlot)];
             }
             canonicalSymmetry[atomIndex] = exportSymmetry;
+            ++geometryRemappedAtoms;
             continue;
         }
 
@@ -651,11 +660,13 @@ void ReconstructedStateCanonicalizer::canonicalizeNeighborShellsToExportConventi
 
         if(valid){
             canonicalSymmetry[atomIndex] = exportSymmetry;
+            ++permutationRemappedAtoms;
         }else{
             for(int slot = 0; slot < count; ++slot){
                 newIndices[start + slot] = oldIndices[start + slot];
             }
             writeFallbackVectors(atomIndex, structureType, count, currentSymmetry);
+            ++localOrderAtoms;
         }
     }
 
@@ -666,6 +677,12 @@ void ReconstructedStateCanonicalizer::canonicalizeNeighborShellsToExportConventi
     analysis.setNeighborLatticeVectorOverrides(
         std::move(canonicalOverrides),
         static_cast<std::size_t>(MAX_NEIGHBORS)
+    );
+    spdlog::info(
+        "  Neighbor shells in export order: {} atoms by cluster geometry, {} by symmetry permutation, {} kept in local order",
+        geometryRemappedAtoms,
+        permutationRemappedAtoms,
+        localOrderAtoms
     );
 }
 

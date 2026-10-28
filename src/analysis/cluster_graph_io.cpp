@@ -2,6 +2,7 @@
 #include <volt/analysis/cluster_hierarchy_rebuilder.h>
 #include <volt/analysis/crystal_topology_library.h>
 #include <volt/analysis/reconstructed_dump_utils.h>
+#include <volt/structures/crystal_structure_types.h>
 #include <volt/structures/crystal_topology_registry.h>
 
 #include <spdlog/spdlog.h>
@@ -410,7 +411,12 @@ bool rebuildClusterGraph(
             return false;
         }
 
-        Cluster* cluster = graph.createCluster(0, row.topologyName, row.clusterId);
+        // The table names the topology only; consumers that test cluster->structure against a
+        // lattice type (ElasticStrain, LineReconstructionDXA) need the type back. Topologies
+        // without one (st, a7, the custom ones) stay OTHER and keep their name.
+        LatticeStructureType structure = LATTICE_OTHER;
+        parseLatticeStructureType(row.topologyName, structure);
+        Cluster* cluster = graph.createCluster(structure, row.topologyName, row.clusterId);
         cluster->orientation = row.orientation;
         cluster->predecessor = nullptr;
         cluster->parentTransition = nullptr;

@@ -344,6 +344,8 @@ bool streamNeighborTopologyToParquet(
     const Stopwatch timer;
     const std::size_t atomCount = context.atomCount();
 
+    // Loading the rows into DuckDB and writing them to Parquet take about as long as each other.
+    ProgressSteps steps({1.0, 1.0});
     const auto neighborIndices = makeNeighborIndicesProperty(context);
     const auto neighborLattice = makeNeighborLatticeVectorProperty(context, analysis);
     const int* indexData = neighborIndices->constDataInt();
@@ -412,6 +414,7 @@ bool streamNeighborTopologyToParquet(
             }
             appender.Close();
         }
+        steps.next();
 
         const std::string copySql =
             "COPY neighbors TO " + Detail::sqlQuote(filePath) +

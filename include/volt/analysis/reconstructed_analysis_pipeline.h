@@ -4,6 +4,7 @@
 #include <volt/analysis/cluster_graph_io.h>
 #include <volt/analysis/structure_analysis.h>
 #include <volt/core/frame_adapter.h>
+#include <volt/core/progress.h>
 
 #include <memory>
 #include <string>
@@ -62,6 +63,9 @@ inline bool appendClusterOutputs(
     const std::vector<AnalysisContext::ExtraScalarColumn>& extraColumns = {},
     const std::vector<bool>* atomMask = nullptr
 ){
+    // Annotated dump, cluster graph tables and neighbor lattice; the neighbor lattice, with a
+    // column per neighbor slot, takes about four times as long as the dump.
+    ProgressSteps steps({1.0, 0.2, 4.0});
     if(!context.writeDumpWithContext(frame, inputDumpPath, &analysis, extraColumns, atomMask)){
         if(errorMessage){
             *errorMessage = "Failed to write " + inputDumpPath;
@@ -73,6 +77,7 @@ inline bool appendClusterOutputs(
     if(outputBase.empty()){
         return true;
     }
+    steps.next();
 
     ClusterGraphExportPaths clusterGraphPaths;
     if(!exportClusterGraph(analysis.clusterGraph(), outputBase, &clusterGraphPaths)){
@@ -84,6 +89,7 @@ inline bool appendClusterOutputs(
 
     result["clusters_table"] = clusterGraphPaths.clustersTablePath;
     result["cluster_transitions_table"] = clusterGraphPaths.clusterTransitionsTablePath;
+    steps.next();
 
     const std::string neighborLatticePath = outputBase + "_neighbor_lattice.parquet";
     if(!streamNeighborTopologyToParquet(neighborLatticePath, frame, context, analysis, atomMask)){

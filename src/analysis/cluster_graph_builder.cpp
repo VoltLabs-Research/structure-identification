@@ -544,9 +544,14 @@ void ClusterBuilder::buildClusterAssignments(){
 }
 
 void ClusterBuilder::build(bool dissolveSmallClusters){
+    // Growing and connecting the clusters are the long passes; the rest walk the clusters.
+    ProgressSteps steps({3.0, 1.0, 3.0, 1.0});
     buildClusterAssignments();
+    steps.next();
     reorientAtomsToAlign();
+    steps.next();
     connectClusters();
+    steps.next();
     formSuperClusters();
     if(dissolveSmallClusters){
         ClusterBuilder::dissolveSmallClusters();

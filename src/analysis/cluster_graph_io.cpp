@@ -2,10 +2,9 @@
 #include <volt/analysis/cluster_hierarchy_rebuilder.h>
 #include <volt/analysis/crystal_topology_library.h>
 #include <volt/analysis/reconstructed_dump_utils.h>
+#include <volt/analysis/structure_identification_log.h>
 #include <volt/structures/crystal_structure_types.h>
 #include <volt/structures/crystal_topology_registry.h>
-
-#include <spdlog/spdlog.h>
 
 #include <algorithm>
 #include <array>
@@ -20,23 +19,6 @@
 namespace Volt{
 
 namespace ClusterGraphExportDetail{
-
-constexpr const char* kClustersSuffix = "_clusters.table";
-constexpr const char* kClusterTransitionsSuffix = "_cluster_transitions.table";
-constexpr const char* kUnknownTopologyToken = "-";
-
-struct ClusterRow{
-    int clusterId = 0;
-    std::string topologyName;
-    Matrix3 orientation = Matrix3::Identity();
-};
-
-struct TransitionRow{
-    int cluster1Id = 0;
-    int cluster2Id = 0;
-    Matrix3 tm = Matrix3::Identity();
-    int distance = 1;
-};
 
 void writeMatrixColumns(std::ostream& stream, const Matrix3& matrix){
     for(int row = 0; row < 3; ++row){
@@ -543,15 +525,15 @@ bool exportClusterGraph(
     const std::string clustersTablePath = outputBase + kClustersSuffix;
     const std::string clusterTransitionsTablePath = outputBase + kClusterTransitionsSuffix;
 
-    std::size_t clusterRows = 0;
-    std::size_t transitionRows = 0;
-    if(!writeClustersTable(clusterGraph, clustersTablePath, clusterRows)){
+    StructureIdentificationLog log;
+    ClusterGraphTables tables;
+    if(!writeClustersTable(clusterGraph, clustersTablePath, tables.clusters)){
         return false;
     }
-    if(!writeClusterTransitionsTable(clusterGraph, clusterTransitionsTablePath, transitionRows)){
+    if(!writeClusterTransitionsTable(clusterGraph, clusterTransitionsTablePath, tables.transitions)){
         return false;
     }
-    spdlog::info("  Cluster graph written: {} clusters, {} transitions", clusterRows, transitionRows);
+    log.dump(tables);
 
     if(paths){
         paths->clustersTablePath = clustersTablePath;

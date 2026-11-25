@@ -1,9 +1,8 @@
 #include <volt/core/reconstructed_structure.h>
 
 #include <volt/analysis/reconstructed_dump_utils.h>
-#include <volt/core/progress.h>
+#include <volt/analysis/structure_identification_log.h>
 
-#include <spdlog/spdlog.h>
 #include <tbb/parallel_for.h>
 #include <tbb/parallel_reduce.h>
 #include <tbb/blocked_range.h>
@@ -20,7 +19,7 @@
 
 namespace Volt{
 
-bool assembleNeighborGraph(
+bool ReconstructedStructureContext::assembleNeighborGraph(
     const LammpsParser::Frame& frame,
     StructureAnalysis& analysis,
     ReconstructedStructureContext& context,
@@ -149,7 +148,7 @@ bool ReconstructedStructureContext::loadStructureAndClusterFromFrame(
 }
 
 template<typename Dest, typename Convert>
-bool readColumnInto(duckdb::Vector& vec, duckdb::idx_t count, const std::vector<int>& targetRow,
+bool ReconstructedStructureContext::readColumnInto(duckdb::Vector& vec, duckdb::idx_t count, const std::vector<int>& targetRow,
                     duckdb::idx_t chunkOffset, Dest* dest, Convert convert){
     duckdb::UnifiedVectorFormat fmt;
     vec.ToUnifiedFormat(count, fmt);
@@ -164,7 +163,7 @@ bool readColumnInto(duckdb::Vector& vec, duckdb::idx_t count, const std::vector<
 }
 
 template<typename Dest>
-bool readIntegerColumn(duckdb::Vector& vec, duckdb::idx_t count, const std::vector<int>& targetRow,
+bool ReconstructedStructureContext::readIntegerColumn(duckdb::Vector& vec, duckdb::idx_t count, const std::vector<int>& targetRow,
                        duckdb::idx_t chunkOffset, Dest* dest, std::string* what){
     const auto assign = [&](auto tag) {
         using Physical = decltype(tag);
@@ -189,7 +188,7 @@ bool readIntegerColumn(duckdb::Vector& vec, duckdb::idx_t count, const std::vect
     }
 }
 
-bool readDoubleColumn(duckdb::Vector& vec, duckdb::idx_t count, const std::vector<int>& targetRow,
+bool ReconstructedStructureContext::readDoubleColumn(duckdb::Vector& vec, duckdb::idx_t count, const std::vector<int>& targetRow,
                       duckdb::idx_t chunkOffset, double* dest, std::string* what){
     switch(vec.GetType().id()){
         case duckdb::LogicalTypeId::DOUBLE:
@@ -422,40 +421,22 @@ bool ReconstructedStructureLoader::load(
     ReconstructedStructureContext& context,
     std::string* errorMessage
 ){
-    Stopwatch timer;
-
+    StructureIdentificationLog log;
     if(!ReconstructedStructureContext::loadStructureAndClusterFromFrame(frame, context, errorMessage)){
         return false;
     }
-    timer.restart();
-
     if(!ReconstructedStructureContext::loadNeighborTopologyFromParquet(
         neighborParquetPath, frame, structureAnalysis, context, errorMessage)){
         return false;
     }
-    const std::size_t neighborEntries = context.neighborIndices ? context.neighborIndices->size() : 0;
-    spdlog::info(
-        "  Neighbor lattice loaded: {} atoms, {:.1f} neighbors per atom, max neighbor distance {:.3f} in {}",
-        frame.natoms,
-        frame.natoms > 0 ? static_cast<double>(neighborEntries) / frame.natoms : 0.0,
-        context.maximumNeighborDistance,
-        timer.elapsed()
-    );
-    timer.restart();
+    log.dump(context);
 
     const ClusterGraph& graph = structureAnalysis.clusterGraph();
-    const std::size_t initialClusterCount = graph.clusters().size();
-    const std::size_t initialTransitionCount = graph.clusterTransitions().size();
+    const ClusterGraphImport graphImport{graph, graph.clusters().size(), graph.clusterTransitions().size()};
     if(!importClusterGraph(structureAnalysis, paths, errorMessage)){
         return false;
     }
-    spdlog::info(
-        "  Cluster graph imported: {} clusters, {} transitions in {}",
-        graph.clusters().size() - initialClusterCount,
-        graph.clusterTransitions().size() - initialTransitionCount,
-        timer.elapsed()
-    );
-
+    log.dump(graphImport);
     return true;
 }
 

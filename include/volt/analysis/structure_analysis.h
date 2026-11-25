@@ -36,11 +36,17 @@ public:
 
 class ClusterRuleProvider;
 
+// The appended neighbors appendNeighbors() left out so that no atom holds more than MAX_NEIGHBORS.
+struct TrimmedNeighbors{
+	std::size_t neighbors = 0;
+	std::size_t atoms = 0;
+};
+
 class StructureAnalysis{
 public:
 	StructureAnalysis(StructureContext& context);
 
-	void appendNeighbors(const std::vector<std::vector<int>>& extras);
+	TrimmedNeighbors appendNeighbors(const std::vector<std::vector<int>>& extras);
 
 	StructureContext& context(){
 		return _context;
@@ -117,5 +123,15 @@ private:
 	std::vector<Vector3> _neighborLatticeVectorOverrides;
 	std::size_t _neighborLatticeVectorOverrideStride = 0;
 };
+
+namespace StructureAnalysisDetail{
+
+const StructureAnalysisCrystalInfo& requireCrystalInfo(
+    const std::shared_ptr<const StructureAnalysisCrystalInfo>& crystalInfoProvider
+);
+AnalysisContext& requireAnalysisContext(StructureContext& context);
+const AnalysisContext& requireAnalysisContext(const StructureContext& context);
+
+}
 
 }

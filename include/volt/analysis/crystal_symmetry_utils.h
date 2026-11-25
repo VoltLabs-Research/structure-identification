@@ -26,6 +26,18 @@ void bitmapSort(Iterator begin, Iterator end, int maxValue){
     }
 }
 
+// Whether the mask of the symmetry permutations an atom may take lets it take this one.
+inline bool symmetryAllowed(std::uint64_t mask, int symmetryIndex){
+    return symmetryIndex >= 0
+        && symmetryIndex < 63
+        && (mask & (std::uint64_t{1} << symmetryIndex)) != 0;
+}
+
+// The same, for an atom whose empty mask means it was given none and may take any permutation.
+inline bool symmetryAllowedOrUnmasked(std::uint64_t mask, int symmetryIndex){
+    return mask == 0 || symmetryAllowed(mask, symmetryIndex);
+}
+
 inline std::uint64_t fullSymmetryMask(int symmetryCount){
     if(symmetryCount <= 0){
         return 0;

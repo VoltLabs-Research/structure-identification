@@ -1,7 +1,8 @@
 #include <volt/analysis/reconstructed_state_canonicalizer.h>
+#include <volt/analysis/crystal_symmetry_utils.h>
+#include <volt/analysis/structure_identification_log.h>
 #include <volt/structures/crystal_topology_registry.h>
 #include <volt/core/progress.h>
-#include <spdlog/spdlog.h>
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -12,20 +13,7 @@
 
 namespace Volt {
 
-bool isSymmetryAllowed(std::uint64_t mask, int symmetryIndex){
-    return symmetryIndex >= 0
-        && symmetryIndex < 63
-        && (mask & (std::uint64_t{1} << symmetryIndex)) != 0;
-}
-
-bool symmetryAllowedWithFallback(std::uint64_t mask, int symmetryIndex){
-    if(mask == 0){
-        return true;
-    }
-    return isSymmetryAllowed(mask, symmetryIndex);
-}
-
-const CrystalTopologyEntry* topologyForStructure(
+const CrystalTopologyEntry* ReconstructedStateCanonicalizer::topologyForStructure(
     const StructureAnalysis& analysis,
     int structureType
 ){
@@ -36,7 +24,7 @@ const CrystalTopologyEntry* topologyForStructure(
     return crystalTopologyByName(topologyName);
 }
 
-int selectInitialSymmetry(
+int ReconstructedStateCanonicalizer::selectInitialSymmetry(
     const StructureAnalysis& analysis,
     const AnalysisContext& context,
     int atomIndex,
@@ -58,7 +46,7 @@ int selectInitialSymmetry(
         const int existingSymmetry = context.atomSymmetryPermutations->getInt(static_cast<std::size_t>(atomIndex));
         if(existingSymmetry >= 0 &&
            existingSymmetry < symmetryCount &&
-           symmetryAllowedWithFallback(allowedMask, existingSymmetry)){
+           AnalysisSymmetryUtils::symmetryAllowedOrUnmasked(allowedMask, existingSymmetry)){
             return existingSymmetry;
         }
     }
@@ -66,19 +54,19 @@ int selectInitialSymmetry(
     const int identityLikeSymmetry = analysis.findClosestSymmetryPermutation(structureType, Matrix3::Identity());
     if(identityLikeSymmetry >= 0 &&
        identityLikeSymmetry < symmetryCount &&
-       symmetryAllowedWithFallback(allowedMask, identityLikeSymmetry)){
+       AnalysisSymmetryUtils::symmetryAllowedOrUnmasked(allowedMask, identityLikeSymmetry)){
         return identityLikeSymmetry;
     }
 
     for(int symmetryIndex = 0; symmetryIndex < symmetryCount; ++symmetryIndex){
-        if(symmetryAllowedWithFallback(allowedMask, symmetryIndex)){
+        if(AnalysisSymmetryUtils::symmetryAllowedOrUnmasked(allowedMask, symmetryIndex)){
             return symmetryIndex;
         }
     }
     return -1;
 }
 
-bool tryResolveNeighborSymmetry(
+bool ReconstructedStateCanonicalizer::tryResolveNeighborSymmetry(
     const StructureAnalysis& analysis,
     const AnalysisContext& context,
     int currentAtomIndex,
@@ -152,7 +140,7 @@ bool tryResolveNeighborSymmetry(
 
     const int symmetryCount = analysis.symmetryPermutationCount(structureType);
     for(int symmetryIndex = 0; symmetryIndex < symmetryCount; ++symmetryIndex){
-        if(!symmetryAllowedWithFallback(allowedMask, symmetryIndex)){
+        if(!AnalysisSymmetryUtils::symmetryAllowedOrUnmasked(allowedMask, symmetryIndex)){
             continue;
         }
         if(transition.equals(
@@ -167,7 +155,7 @@ bool tryResolveNeighborSymmetry(
     return false;
 }
 
-bool shouldVisitAtom(
+bool ReconstructedStateCanonicalizer::shouldVisitAtom(
     const AnalysisContext& context,
     std::size_t atomIndex,
     bool requireAssignedCluster
@@ -178,7 +166,7 @@ bool shouldVisitAtom(
     return context.atomClusters && context.atomClusters->getInt(atomIndex) != 0;
 }
 
-bool shouldTraverseNeighbor(
+bool ReconstructedStateCanonicalizer::shouldTraverseNeighbor(
     const AnalysisContext& context,
     int currentClusterId,
     int neighborAtomIndex,
@@ -191,7 +179,7 @@ bool shouldTraverseNeighbor(
         context.atomClusters->getInt(static_cast<std::size_t>(neighborAtomIndex)) == currentClusterId;
 }
 
-double normalizedDotProduct(const Vector3& left, const Vector3& right){
+double ReconstructedStateCanonicalizer::normalizedDotProduct(const Vector3& left, const Vector3& right){
     const double leftLength = left.length();
     const double rightLength = right.length();
     if(leftLength <= EPSILON || rightLength <= EPSILON){
@@ -200,7 +188,7 @@ double normalizedDotProduct(const Vector3& left, const Vector3& right){
     return (left / leftLength).dot(right / rightLength);
 }
 
-bool solveMaximumWeightAssignment(
+bool ReconstructedStateCanonicalizer::solveMaximumWeightAssignment(
     const std::vector<std::vector<double>>& weights,
     std::vector<int>& assignment
 ){
@@ -292,7 +280,7 @@ bool solveMaximumWeightAssignment(
     return std::find(assignment.begin(), assignment.end(), -1) == assignment.end();
 }
 
-bool remapNeighborShellByClusterGeometry(
+bool ReconstructedStateCanonicalizer::remapNeighborShellByClusterGeometry(
     const StructureAnalysis& analysis,
     const AnalysisContext& context,
     std::size_t atomIndex,
@@ -358,7 +346,7 @@ bool remapNeighborShellByClusterGeometry(
     return minimumAssignedDot >= 0.5;
 }
 
-void canonicalizeSymmetryPermutationsImpl(
+void ReconstructedStateCanonicalizer::canonicalizeSymmetryPermutationsImpl(
     StructureAnalysis& analysis,
     AnalysisContext& context,
     bool requireAssignedCluster
@@ -570,9 +558,8 @@ void ReconstructedStateCanonicalizer::canonicalizeNeighborShellsToExportConventi
         }
     };
 
-    std::size_t geometryRemappedAtoms = 0;
-    std::size_t permutationRemappedAtoms = 0;
-    std::size_t localOrderAtoms = 0;
+    StructureIdentificationLog log;
+    NeighborShellOrder order;
     ProgressReporter progress("  Reordering neighbor shells", atomCount);
 
     int* newIndices = reorderedIndices->dataInt();
@@ -592,7 +579,7 @@ void ReconstructedStateCanonicalizer::canonicalizeNeighborShellsToExportConventi
         if(!topology || topology->coordinationNumber <= 0 || topology->symmetries.empty() ||
            currentSymmetry < 0 || currentSymmetry >= analysis.symmetryPermutationCount(structureType)){
             writeFallbackVectors(atomIndex, structureType, count, currentSymmetry);
-            ++localOrderAtoms;
+            ++order.localOrderAtoms;
             continue;
         }
 
@@ -623,7 +610,7 @@ void ReconstructedStateCanonicalizer::canonicalizeNeighborShellsToExportConventi
                 ] = topology->neighborVectors[static_cast<std::size_t>(exportSlot)];
             }
             canonicalSymmetry[atomIndex] = exportSymmetry;
-            ++geometryRemappedAtoms;
+            ++order.geometryRemappedAtoms;
             continue;
         }
 
@@ -660,13 +647,13 @@ void ReconstructedStateCanonicalizer::canonicalizeNeighborShellsToExportConventi
 
         if(valid){
             canonicalSymmetry[atomIndex] = exportSymmetry;
-            ++permutationRemappedAtoms;
+            ++order.permutationRemappedAtoms;
         }else{
             for(int slot = 0; slot < count; ++slot){
                 newIndices[start + slot] = oldIndices[start + slot];
             }
             writeFallbackVectors(atomIndex, structureType, count, currentSymmetry);
-            ++localOrderAtoms;
+            ++order.localOrderAtoms;
         }
     }
 
@@ -678,12 +665,7 @@ void ReconstructedStateCanonicalizer::canonicalizeNeighborShellsToExportConventi
         std::move(canonicalOverrides),
         static_cast<std::size_t>(MAX_NEIGHBORS)
     );
-    spdlog::info(
-        "  Neighbor shells in export order: {} atoms by cluster geometry, {} by symmetry permutation, {} kept in local order",
-        geometryRemappedAtoms,
-        permutationRemappedAtoms,
-        localOrderAtoms
-    );
+    log.dump(order);
 }
 
 void ReconstructedStateCanonicalizer::canonicalizeSymmetryPermutations(

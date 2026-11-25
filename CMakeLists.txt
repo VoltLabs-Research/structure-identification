@@ -73,6 +73,7 @@ endif()
 set(LIBRARY_SOURCES
 	${CMAKE_CURRENT_SOURCE_DIR}/src/analysis/structure_analysis_context.cpp
 	${CMAKE_CURRENT_SOURCE_DIR}/src/analysis/structure_identification_export.cpp
+	${CMAKE_CURRENT_SOURCE_DIR}/src/analysis/structure_identification_log.cpp
 	${CMAKE_CURRENT_SOURCE_DIR}/src/analysis/reconstructed_dump_utils.cpp
 	${CMAKE_CURRENT_SOURCE_DIR}/src/analysis/cluster_graph_io.cpp
 	${CMAKE_CURRENT_SOURCE_DIR}/src/analysis/cluster_graph_builder.cpp

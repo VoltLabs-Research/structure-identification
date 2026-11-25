@@ -1,9 +1,10 @@
 #include <volt/analysis/cluster_graph_builder.h>
 #include <volt/analysis/cluster_hierarchy_rebuilder.h>
 #include <volt/analysis/cluster_rule_provider.h>
+#include <volt/analysis/crystal_symmetry_utils.h>
+#include <volt/analysis/structure_identification_log.h>
 #include <volt/core/progress.h>
 
-#include <spdlog/spdlog.h>
 #include <tbb/parallel_for.h>
 #include <tbb/blocked_range.h>
 
@@ -13,30 +14,17 @@
 
 namespace Volt{
 
-namespace ClusterBuilderDetail{
+thread_local ProgressReporter* ClusterBuilder::_growthProgress = nullptr;
 
-constexpr bool symmetryAllowed(std::uint64_t mask, int symmetryIndex){
-    return symmetryIndex >= 0
-        && symmetryIndex < 63
-        && (mask & (std::uint64_t{1} << symmetryIndex)) != 0;
+ClusterBuilder::GrowthProgressScope::GrowthProgressScope(ProgressReporter& progress){
+    _growthProgress = &progress;
 }
 
-// grow() is public and its signature has no room for a reporter, so buildClusterAssignments()
-// lends it one for the duration of the flood fill.
-static thread_local ProgressReporter* growthProgress = nullptr;
-
-struct GrowthProgressScope{
-    explicit GrowthProgressScope(ProgressReporter& progress){
-        growthProgress = &progress;
-    }
-    ~GrowthProgressScope(){
-        growthProgress = nullptr;
-    }
-};
-
+ClusterBuilder::GrowthProgressScope::~GrowthProgressScope(){
+    _growthProgress = nullptr;
 }
 
-using namespace ClusterBuilderDetail;
+using AnalysisSymmetryUtils::symmetryAllowed;
 
 ClusterBuilder::ClusterBuilder(
     StructureAnalysis& sa,
@@ -70,7 +58,7 @@ int ClusterBuilder::selectInitialSymmetryPermutation(int atomIndex, int structur
     return -1;
 }
 
-void ClusterBuilder::dissolveSmallClusters(int minClusterSize){
+DissolvedClusters ClusterBuilder::dissolveSmallClusters(int minClusterSize){
     std::size_t dissolvedClusters = 0;
     for(Cluster* cluster : _sa.clusterGraph().clusters()){
         if(!cluster){
@@ -90,7 +78,7 @@ void ClusterBuilder::dissolveSmallClusters(int minClusterSize){
         cluster->topologyName.clear();
         ++dissolvedClusters;
     }
-    spdlog::info("  Marked {} clusters smaller than {} atoms as Other", dissolvedClusters, minClusterSize);
+    return {dissolvedClusters, minClusterSize};
 }
 
 void ClusterBuilder::grow(
@@ -100,7 +88,7 @@ void ClusterBuilder::grow(
     Matrix_3<double>& orientationW,
     int structureType
 ){
-    ProgressReporter* const progress = growthProgress;
+    ProgressReporter* const progress = _growthProgress;
     while(!atomsToVisit.empty()){
         int currentAtomIndex = atomsToVisit.front();
         atomsToVisit.pop_front();
@@ -376,7 +364,7 @@ bool ClusterBuilder::calculateMisorientation(
     return true;
 }
 
-void ClusterBuilder::connectClusters(){
+ClusterConnections ClusterBuilder::connectClusters(){
     ProgressReporter progress("  Connecting clusters", _context.atomCount());
     std::vector<std::vector<int>> extras(_context.atomCount());
 
@@ -427,12 +415,8 @@ void ClusterBuilder::connectClusters(){
         }
     }
 
-    _sa.appendNeighbors(extras);
-    spdlog::info(
-        "  Connected clusters: {} transitions in {}",
-        _sa.clusterGraph().clusterTransitions().size(),
-        progress.elapsed()
-    );
+    const TrimmedNeighbors trimmedNeighbors = _sa.appendNeighbors(extras);
+    return {_sa.clusterGraph().clusterTransitions().size(), trimmedNeighbors};
 }
 
 void ClusterBuilder::reorientAtomsToAlign(){
@@ -464,17 +448,15 @@ void ClusterBuilder::reorientAtomsToAlign(){
     });
 }
 
-void ClusterBuilder::buildClusterAssignments(){
+ClusterGrowth ClusterBuilder::buildClusterAssignments(){
     std::size_t crystallineAtoms = 0;
     for(size_t atomIndex = 0; atomIndex < _context.atomCount(); ++atomIndex){
         if(!alreadyProcessedAtom(atomIndex)){
             ++crystallineAtoms;
         }
     }
-    spdlog::info("  Growing clusters from {} crystalline atoms...", crystallineAtoms);
 
     const std::size_t initialClusterCount = _sa.clusterGraph().clusters().size();
-    std::size_t unclusteredSeeds = 0;
     ProgressReporter progress("  Growing clusters", crystallineAtoms);
     const GrowthProgressScope progressScope(progress);
 
@@ -485,7 +467,6 @@ void ClusterBuilder::buildClusterAssignments(){
         const int seedSymmetryPermutation = selectInitialSymmetryPermutation(static_cast<int>(seedAtomIndex), structureType);
         if(seedSymmetryPermutation < 0){
             _context.structureTypes->setInt(seedAtomIndex, LATTICE_OTHER);
-            ++unclusteredSeeds;
             continue;
         }
 
@@ -532,30 +513,28 @@ void ClusterBuilder::buildClusterAssignments(){
         }
     }
 
-    spdlog::info(
-        "  Grew {} clusters covering {} atoms in {}",
-        _sa.clusterGraph().clusters().size() - initialClusterCount,
-        progress.done(),
-        progress.elapsed()
-    );
-    if(unclusteredSeeds > 0){
-        spdlog::info("  {} atoms have no allowed symmetry permutation; left unclustered as Other", unclusteredSeeds);
-    }
+    return {_sa.clusterGraph().clusters().size() - initialClusterCount, progress.done(), crystallineAtoms};
 }
 
-void ClusterBuilder::build(bool dissolveSmallClusters){
-    // Growing and connecting the clusters are the long passes; the rest walk the clusters.
-    ProgressSteps steps({3.0, 1.0, 3.0, 1.0});
-    buildClusterAssignments();
+BuiltClusters ClusterBuilder::build(bool dissolveSmallClusters){
+    StructureIdentificationLog log;
+    ProgressSteps steps({
+        {"Growing clusters", 3.0},
+        {"Reorienting atoms to their clusters", 1.0},
+        {"Connecting clusters", 3.0},
+        {"Forming super-clusters", 1.0},
+    });
+    log.dump(buildClusterAssignments());
     steps.next();
     reorientAtomsToAlign();
     steps.next();
-    connectClusters();
+    log.dump(connectClusters());
     steps.next();
-    formSuperClusters();
+    log.dump(formSuperClusters());
     if(dissolveSmallClusters){
-        ClusterBuilder::dissolveSmallClusters();
+        log.dump(ClusterBuilder::dissolveSmallClusters());
     }
+    return {_sa.clusterGraph(), *_context.atomClusters, dissolveSmallClusters};
 }
 
 void ClusterBuilder::processDefectCluster(Cluster* defectCluster){
@@ -583,7 +562,7 @@ void ClusterBuilder::processDefectCluster(Cluster* defectCluster){
     }
 }
 
-void ClusterBuilder::formSuperClusters(){
+SuperClusterBridges ClusterBuilder::formSuperClusters(){
     const size_t oldTransitionCount = _sa.clusterGraph().clusterTransitions().size();
 
     for(Cluster* cluster : _sa.clusterGraph().clusters()){
@@ -610,9 +589,7 @@ void ClusterBuilder::formSuperClusters(){
     }
 
     ClusterHierarchyUtils::rebuildParentHierarchy(_sa, superClusterTransitions);
-    if(!superClusterTransitions.empty()){
-        spdlog::info("  Bridged {} cluster pairs across defect clusters", superClusterTransitions.size());
-    }
+    return {superClusterTransitions.size()};
 }
 
 Cluster* ClusterBuilder::startNew(int atomIndex, int structureType){

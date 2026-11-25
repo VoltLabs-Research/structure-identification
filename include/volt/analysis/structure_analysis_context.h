@@ -5,6 +5,7 @@
 #include <volt/structures/crystal_structure_types.h>
 #include <volt/core/lammps_parser.h>
 
+#include <cstddef>
 #include <memory>
 #include <string>
 #include <vector>
@@ -12,6 +13,17 @@
 namespace Volt{
 
 class StructureAnalysis;
+
+// The LAMMPS dump writeDumpWithContext() wrote: the frame with the analysis's per-atom columns.
+struct AnnotatedDump{
+    std::string path;
+};
+
+// The neighbor lattice streamNeighborTopologyToParquet() wrote, with one row per atom it kept.
+struct NeighborLatticeTable{
+    std::string path;
+    std::size_t atoms = 0;
+};
 
 class StructureContext{
 public:
@@ -88,7 +100,18 @@ bool streamNeighborTopologyToParquet(
     const LammpsParser::Frame& frame,
     const AnalysisContext& context,
     const StructureAnalysis& analysis,
-    const std::vector<bool>* atomMask = nullptr
+    const std::vector<bool>* atomMask = nullptr,
+    std::string* errorMessage = nullptr
 );
+
+namespace AnalysisContextDetail{
+
+std::shared_ptr<ParticleProperty> makeNeighborIndicesProperty(const AnalysisContext& context);
+std::shared_ptr<ParticleProperty> makeNeighborLatticeVectorProperty(
+    const AnalysisContext& context,
+    const StructureAnalysis& analysis
+);
+
+}
 
 }

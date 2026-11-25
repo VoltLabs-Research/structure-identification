@@ -51,10 +51,6 @@ public:
 private:
     const OrientationClusterAtomState* stateFor(int atomIndex) const;
 
-    static bool orthonormalizeMatrix(const Matrix3& input, Matrix3& output);
-    static double matrixTrace(const Matrix3& matrix);
-    static bool symmetryAllowed(std::uint64_t mask, int symmetryIndex);
-
     Vector3 transformedIdealVector(
         const StructureAnalysis& analysis,
         int structureType,

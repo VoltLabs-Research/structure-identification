@@ -52,7 +52,18 @@ inline std::unique_ptr<PreparedAnalysisSession> prepareAnalysisSession(
     );
 }
 
-inline bool appendClusterOutputs(
+// The files DXA reads an analysis back from, as appendClusterOutputs() wrote them: the annotated dump and, next to
+// an output base, the cluster graph tables and the neighbor lattice. False when one of them could not be written.
+struct ClusterOutputs{
+    std::string annotatedDump;
+    ClusterGraphExportPaths clusterGraph;
+    std::string neighborLattice;
+    bool written = false;
+
+    explicit operator bool() const{ return written; }
+};
+
+inline ClusterOutputs appendClusterOutputs(
     const LammpsParser::Frame& frame,
     const std::string& outputBase,
     const std::string& inputDumpPath,
@@ -63,43 +74,46 @@ inline bool appendClusterOutputs(
     const std::vector<AnalysisContext::ExtraScalarColumn>& extraColumns = {},
     const std::vector<bool>* atomMask = nullptr
 ){
-    // Annotated dump, cluster graph tables and neighbor lattice; the neighbor lattice, with a
-    // column per neighbor slot, takes about four times as long as the dump.
-    ProgressSteps steps({1.0, 0.2, 4.0});
+    ProgressSteps steps({
+        {"Writing the annotated dump", 1.0},
+        {"Writing the cluster graph tables", 0.2},
+        {"Writing the neighbor lattice", 4.0},
+    });
+    ClusterOutputs outputs;
     if(!context.writeDumpWithContext(frame, inputDumpPath, &analysis, extraColumns, atomMask)){
         if(errorMessage){
             *errorMessage = "Failed to write " + inputDumpPath;
         }
-        return false;
+        return outputs;
     }
+    outputs.annotatedDump = inputDumpPath;
     result["input_dump"] = inputDumpPath;
 
     if(outputBase.empty()){
-        return true;
+        outputs.written = true;
+        return outputs;
     }
     steps.next();
 
-    ClusterGraphExportPaths clusterGraphPaths;
-    if(!exportClusterGraph(analysis.clusterGraph(), outputBase, &clusterGraphPaths)){
+    if(!exportClusterGraph(analysis.clusterGraph(), outputBase, &outputs.clusterGraph)){
         if(errorMessage){
             *errorMessage = "Failed to export cluster graph tables";
         }
-        return false;
+        return outputs;
     }
 
-    result["clusters_table"] = clusterGraphPaths.clustersTablePath;
-    result["cluster_transitions_table"] = clusterGraphPaths.clusterTransitionsTablePath;
+    result["clusters_table"] = outputs.clusterGraph.clustersTablePath;
+    result["cluster_transitions_table"] = outputs.clusterGraph.clusterTransitionsTablePath;
     steps.next();
 
     const std::string neighborLatticePath = outputBase + "_neighbor_lattice.parquet";
-    if(!streamNeighborTopologyToParquet(neighborLatticePath, frame, context, analysis, atomMask)){
-        if(errorMessage){
-            *errorMessage = "Failed to write " + neighborLatticePath;
-        }
-        return false;
+    if(!streamNeighborTopologyToParquet(neighborLatticePath, frame, context, analysis, atomMask, errorMessage)){
+        return outputs;
     }
+    outputs.neighborLattice = neighborLatticePath;
     result["neighbor_lattice"] = neighborLatticePath;
-    return true;
+    outputs.written = true;
+    return outputs;
 }
 
 }

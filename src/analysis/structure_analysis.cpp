@@ -1,6 +1,5 @@
 #include <volt/core/volt.h>
 #include <volt/analysis/structure_analysis.h>
-#include <spdlog/spdlog.h>
 
 #include <algorithm>
 
@@ -101,9 +100,9 @@ int StructureAnalysis::findNeighbor(int centralAtomIndex, int neighborAtomIndex)
     return -1;
 }
 
-void StructureAnalysis::appendNeighbors(const std::vector<std::vector<int>>& extras){
+TrimmedNeighbors StructureAnalysis::appendNeighbors(const std::vector<std::vector<int>>& extras){
     if(extras.empty()){
-        return;
+        return {};
     }
 
     const size_t N = _context.atomCount();
@@ -161,15 +160,6 @@ void StructureAnalysis::appendNeighbors(const std::vector<std::vector<int>>& ext
         newOffsets[i + 1] = newOffsets[i] + oldCount + static_cast<int>(filtered.size());
     }
 
-    if(trimmedNeighborCount > 0){
-        spdlog::warn(
-            "  Trimmed {} appended neighbors across {} atoms to respect MAX_NEIGHBORS={}",
-            trimmedNeighborCount,
-            affectedAtomCount,
-            static_cast<int>(MAX_NEIGHBORS)
-        );
-    }
-
     const size_t totalNeighbors = static_cast<size_t>(newOffsets[N]);
     auto newIndicesProp = std::make_shared<ParticleProperty>(
         totalNeighbors, DataType::Int, 1, 0, false);
@@ -191,6 +181,7 @@ void StructureAnalysis::appendNeighbors(const std::vector<std::vector<int>>& ext
         N + 1, DataType::Int, 1, 0, false);
     std::copy(newOffsets.begin(), newOffsets.end(), _context.neighborOffsets->dataInt());
     _context.neighborIndices = std::move(newIndicesProp);
+    return {trimmedNeighborCount, affectedAtomCount};
 }
 
 void StructureAnalysis::setNeighborLatticeVectorOverrides(

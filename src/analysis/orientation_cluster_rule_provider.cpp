@@ -1,4 +1,5 @@
 #include <volt/analysis/orientation_cluster_rule_provider.h>
+#include <volt/analysis/crystal_symmetry_utils.h>
 
 #include <volt/analysis/structure_analysis.h>
 #include <volt/analysis/structure_analysis_context.h>
@@ -35,51 +36,6 @@ const OrientationClusterAtomState* OrientationClusterRuleProvider::stateFor(int 
     }
     const auto& state = (*_atomStates)[static_cast<std::size_t>(atomIndex)];
     return state.valid ? &state : nullptr;
-}
-
-bool OrientationClusterRuleProvider::orthonormalizeMatrix(const Matrix3& input, Matrix3& output){
-    Vector3 c0 = input.column(0);
-    Vector3 c1 = input.column(1);
-    Vector3 c2 = input.column(2);
-
-    const double l0 = c0.length();
-    if(l0 <= EPSILON){
-        return false;
-    }
-    c0 /= l0;
-
-    c1 -= c0 * c0.dot(c1);
-    const double l1 = c1.length();
-    if(l1 <= EPSILON){
-        return false;
-    }
-    c1 /= l1;
-
-    c2 -= c0 * c0.dot(c2);
-    c2 -= c1 * c1.dot(c2);
-    const double l2 = c2.length();
-    if(l2 <= EPSILON){
-        return false;
-    }
-    c2 /= l2;
-
-    output = Matrix3(c0, c1, c2);
-    if(output.determinant() < 0.0){
-        output.column(2) = -output.column(2);
-    }
-    return true;
-}
-
-double OrientationClusterRuleProvider::matrixTrace(const Matrix3& matrix){
-    return matrix(0, 0) + matrix(1, 1) + matrix(2, 2);
-}
-
-bool OrientationClusterRuleProvider::symmetryAllowed(std::uint64_t mask, int symmetryIndex){
-    return mask == 0 || (
-        symmetryIndex >= 0 &&
-        symmetryIndex < 63 &&
-        (mask & (std::uint64_t{1} << symmetryIndex)) != 0
-    );
 }
 
 Vector3 OrientationClusterRuleProvider::transformedIdealVector(
@@ -159,11 +115,11 @@ bool OrientationClusterRuleProvider::canonicalAlignmentTrace(
 
     Matrix3 relative = Matrix3(neighborCanonical.transposed() * currentCanonical);
     Matrix3 orthogonalized;
-    if(!orthonormalizeMatrix(relative, orthogonalized)){
+    if(!relative.orthonormalized(orthogonalized)){
         return false;
     }
 
-    outTrace = matrixTrace(orthogonalized);
+    outTrace = orthogonalized.trace();
     return true;
 }
 
@@ -308,7 +264,7 @@ ClusterRuleDecision OrientationClusterRuleProvider::tryAssignNeighbor(
     bool bestMatchesPreferred = false;
 
     for(int neighborSymmetry = 0; neighborSymmetry < symmetryCount; ++neighborSymmetry){
-        if(!symmetryAllowed(allowedMask, neighborSymmetry)){
+        if(!AnalysisSymmetryUtils::symmetryAllowedOrUnmasked(allowedMask, neighborSymmetry)){
             continue;
         }
 
@@ -424,7 +380,7 @@ ClusterRuleDecision OrientationClusterRuleProvider::tryCalculateTransition(
     );
 
     Matrix3 rawTransition = Matrix3(neighborOrientation.transposed() * atomOrientation);
-    if(!orthonormalizeMatrix(rawTransition, outTransition)){
+    if(!rawTransition.orthonormalized(outTransition)){
         return ClusterRuleDecision::Rejected;
     }
 

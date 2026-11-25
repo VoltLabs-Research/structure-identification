@@ -1,6 +1,7 @@
 #include <volt/analysis/structure_analysis_context.h>
 #include <volt/analysis/reconstructed_dump_utils.h>
 #include <volt/analysis/structure_analysis.h>
+#include <volt/analysis/structure_identification_log.h>
 #include <volt/core/progress.h>
 #include <volt/structures/crystal_structure_types.h>
 
@@ -11,7 +12,6 @@
 #include <string>
 #include <utility>
 
-#include <spdlog/spdlog.h>
 #include <tbb/blocked_range.h>
 #include <tbb/parallel_for.h>
 
@@ -294,7 +294,7 @@ bool AnalysisContext::writeDumpWithContext(
     const std::vector<ExtraScalarColumn>& extraColumns,
     const std::vector<bool>* atomMask
 ) const{
-    const Stopwatch timer;
+    StructureIdentificationLog log;
     LammpsParser parser;
     const auto exported = exportContext(analysis, extraColumns);
 
@@ -303,33 +303,19 @@ bool AnalysisContext::writeDumpWithContext(
         propertyAtomIds[atomIndex] = contractAtomId(frame, atomIndex);
     }
 
-    const auto reportWritten = [&](bool written){
-        if(written){
-            spdlog::info("  Annotated dump written to {} in {}", outputFilename, timer.elapsed());
-        }
-        return written;
-    };
-
-    if(!atomMask){
-        return reportWritten(parser.writeFileMergedWithExtraColumns(
-            outputFilename,
-            frame,
-            propertyAtomIds,
-            exported.columns,
-            exported.headers,
-            true
-        ));
-    }
-
-    const LammpsParser::Frame subset = maskFrame(frame, *atomMask);
-    return reportWritten(parser.writeFileMergedWithExtraColumns(
+    const LammpsParser::Frame subset = atomMask ? maskFrame(frame, *atomMask) : LammpsParser::Frame{};
+    const bool written = parser.writeFileMergedWithExtraColumns(
         outputFilename,
-        subset,
+        atomMask ? subset : frame,
         propertyAtomIds,
         exported.columns,
         exported.headers,
         true
-    ));
+    );
+    if(written){
+        log.dump(AnnotatedDump{outputFilename});
+    }
+    return written;
 }
 
 bool streamNeighborTopologyToParquet(
@@ -337,15 +323,24 @@ bool streamNeighborTopologyToParquet(
     const LammpsParser::Frame& frame,
     const AnalysisContext& context,
     const StructureAnalysis& analysis,
-    const std::vector<bool>* atomMask
+    const std::vector<bool>* atomMask,
+    std::string* errorMessage
 ){
     using namespace AnalysisContextDetail;
 
-    const Stopwatch timer;
+    StructureIdentificationLog log;
     const std::size_t atomCount = context.atomCount();
+    const auto exportFailed = [&](const std::string& reason){
+        if(errorMessage){
+            *errorMessage = "Neighbor lattice export to " + filePath + " failed: " + reason;
+        }
+        return false;
+    };
 
-    // Loading the rows into DuckDB and writing them to Parquet take about as long as each other.
-    ProgressSteps steps({1.0, 1.0});
+    ProgressSteps steps({
+        {"Loading the neighbor lattice into DuckDB", 1.0},
+        {"Writing the neighbor lattice to Parquet", 1.0},
+    });
     const auto neighborIndices = makeNeighborIndicesProperty(context);
     const auto neighborLattice = makeNeighborLatticeVectorProperty(context, analysis);
     const int* indexData = neighborIndices->constDataInt();
@@ -376,8 +371,7 @@ bool streamNeighborTopologyToParquet(
         ddl += ')';
         auto ddlResult = con.Query(ddl);
         if(ddlResult->HasError()){
-            spdlog::error("  Neighbor lattice export to {} failed: {}", filePath, ddlResult->GetError());
-            return false;
+            return exportFailed(ddlResult->GetError());
         }
 
         {
@@ -421,14 +415,12 @@ bool streamNeighborTopologyToParquet(
             " (FORMAT PARQUET, COMPRESSION ZSTD)";
         auto copyResult = con.Query(copySql);
         if(copyResult->HasError()){
-            spdlog::error("  Neighbor lattice export to {} failed: {}", filePath, copyResult->GetError());
-            return false;
+            return exportFailed(copyResult->GetError());
         }
-        spdlog::info("  Neighbor lattice written to {} ({} atoms) in {}", filePath, nextCompactIndex, timer.elapsed());
+        log.dump(NeighborLatticeTable{filePath, static_cast<std::size_t>(nextCompactIndex)});
         return true;
     }catch(const std::exception& error){
-        spdlog::error("  Neighbor lattice export to {} failed: {}", filePath, error.what());
-        return false;
+        return exportFailed(error.what());
     }
 }
 

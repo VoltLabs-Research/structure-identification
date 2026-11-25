@@ -513,7 +513,7 @@ ClusterGrowth ClusterBuilder::buildClusterAssignments(){
         }
     }
 
-    return {_sa.clusterGraph().clusters().size() - initialClusterCount, progress.done(), crystallineAtoms};
+    return {_sa.clusterGraph().clusters().size() - initialClusterCount, static_cast<std::size_t>(progress.done()), crystallineAtoms};
 }
 
 BuiltClusters ClusterBuilder::build(bool dissolveSmallClusters){

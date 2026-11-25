@@ -148,8 +148,8 @@ bool ReconstructedStructureContext::loadStructureAndClusterFromFrame(
 }
 
 template<typename Dest, typename Convert>
-bool ReconstructedStructureContext::readColumnInto(duckdb::Vector& vec, duckdb::idx_t count, const std::vector<int>& targetRow,
-                    duckdb::idx_t chunkOffset, Dest* dest, Convert convert){
+bool ReconstructedStructureContext::readColumnInto(duckdb::Vector& vec, std::uint64_t count, const std::vector<int>& targetRow,
+                    std::uint64_t chunkOffset, Dest* dest, Convert convert){
     duckdb::UnifiedVectorFormat fmt;
     vec.ToUnifiedFormat(count, fmt);
     for(duckdb::idx_t r = 0; r < count; ++r){
@@ -163,8 +163,8 @@ bool ReconstructedStructureContext::readColumnInto(duckdb::Vector& vec, duckdb::
 }
 
 template<typename Dest>
-bool ReconstructedStructureContext::readIntegerColumn(duckdb::Vector& vec, duckdb::idx_t count, const std::vector<int>& targetRow,
-                       duckdb::idx_t chunkOffset, Dest* dest, std::string* what){
+bool ReconstructedStructureContext::readIntegerColumn(duckdb::Vector& vec, std::uint64_t count, const std::vector<int>& targetRow,
+                       std::uint64_t chunkOffset, Dest* dest, std::string* what){
     const auto assign = [&](auto tag) {
         using Physical = decltype(tag);
         return readColumnInto(vec, count, targetRow, chunkOffset, dest,
@@ -188,8 +188,8 @@ bool ReconstructedStructureContext::readIntegerColumn(duckdb::Vector& vec, duckd
     }
 }
 
-bool ReconstructedStructureContext::readDoubleColumn(duckdb::Vector& vec, duckdb::idx_t count, const std::vector<int>& targetRow,
-                      duckdb::idx_t chunkOffset, double* dest, std::string* what){
+bool ReconstructedStructureContext::readDoubleColumn(duckdb::Vector& vec, std::uint64_t count, const std::vector<int>& targetRow,
+                      std::uint64_t chunkOffset, double* dest, std::string* what){
     switch(vec.GetType().id()){
         case duckdb::LogicalTypeId::DOUBLE:
             return readColumnInto(vec, count, targetRow, chunkOffset, dest,

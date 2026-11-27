@@ -88,10 +88,9 @@ json atomsByStructureTable(
         const std::vector<std::size_t>& atomsOfType = structures.atomsOfType[static_cast<std::size_t>(st)];
         json atomsArray = json::array();
         for(std::size_t atomIndex : atomsOfType){
-            const Point3& pos = frame.positions[atomIndex];
             json atom = {
                 {"id", frame.ids[atomIndex]},
-                {"pos", {pos.x(), pos.y(), pos.z()}},
+                {"pos", frame.positions[atomIndex]},
                 {"structure_id", st},
                 {"structure_name", name}
             };
@@ -102,7 +101,7 @@ json atomsByStructureTable(
         structuresListing.push_back({
             {"structure_id", st},
             {"structure_name", name},
-            {"atom_count", static_cast<int>(atomsOfType.size())}
+            {"atom_count", atomsOfType.size()}
         });
     }
 
@@ -110,7 +109,7 @@ json atomsByStructureTable(
     json table;
     table["main_listing"] = {
         {"total_atoms", totalAtoms},
-        {"structure_count", static_cast<int>(structures.order.size())},
+        {"structure_count", structures.order.size()},
         {"clustered_atoms", structures.clusteredAtoms},
         {"unclustered_atoms", totalAtoms - structures.clusteredAtoms}
     };
@@ -120,6 +119,24 @@ json atomsByStructureTable(
     table["export"] = json::object();
     table["export"]["AtomisticExporter"] = std::move(atomsByStructure);
     return table;
+}
+
+json structureCountRows(
+    const std::map<int, int>& counts,
+    std::size_t atomCount,
+    const std::function<std::string(int structureType)>& nameOf
+){
+    const double atomsForFraction = atomCount > 0 ? static_cast<double>(atomCount) : 1.0;
+    json rows = json::array();
+    for(const auto& [structureType, count] : counts){
+        rows.push_back({
+            {"structure_id", structureType},
+            {"structure_name", nameOf(structureType)},
+            {"count", count},
+            {"fraction", static_cast<double>(count) / atomsForFraction}
+        });
+    }
+    return rows;
 }
 
 void streamStructureIdentificationToParquet(
@@ -148,7 +165,7 @@ void streamStructureIdentificationToParquet(
             const int stype = structureTypeFor(i);
             return resolveStructureName ? resolveStructureName(i, stype) : defaultStructureName(stype);
         },
-        [&](ColumnarAtomWriter& w, std::size_t i){
+        [&](ColumnarRowWriter& w, std::size_t i){
             w.field("cluster_id", atomClusters ? atomClusters[i] : 0);
             if(atomColumnWriter) atomColumnWriter(w, i, structureTypeFor(i));
         },

@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <functional>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -45,9 +46,17 @@ json atomsByStructureTable(
     const std::function<void(json& atom, std::size_t atomIndex)>& atomFields
 );
 
+// The structure_counts rows of a classification: each structure type with its name, its atom count and the share of
+// the atomCount atoms it has.
+json structureCountRows(
+    const std::map<int, int>& counts,
+    std::size_t atomCount,
+    const std::function<std::string(int structureType)>& nameOf = defaultStructureName
+);
+
 using StructureNameResolver = std::function<std::string(std::size_t atomIndex, int structureType)>;
 
-using AtomColumnWriter = std::function<void(ColumnarAtomWriter& writer, std::size_t atomIndex, int structureType)>;
+using AtomColumnWriter = std::function<void(ColumnarRowWriter& writer, std::size_t atomIndex, int structureType)>;
 
 void streamStructureIdentificationToParquet(
     const std::string& filePath,
